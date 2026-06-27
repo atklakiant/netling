@@ -1,5 +1,5 @@
 .{
-    .name = .deepearth,
+    .name = .netling,
 
     .version = "0.0.0",
     .minimum_zig_version = "0.16.0",
