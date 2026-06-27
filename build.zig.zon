@@ -1,0 +1,17 @@
+.{
+    .name = .deepearth,
+
+    .version = "0.0.0",
+    .minimum_zig_version = "0.16.0",
+
+    .fingerprint = 0x202685a72b8dda8a,
+
+    .dependencies = .{},
+
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        ".gitignore",
+    },
+}
