@@ -133,7 +133,7 @@ pub fn EventIterator(comptime IncomingType: type) type {
                 var received_packet = existing_connection.receivePacket(
                     self.context_state.allocator,
                 ) catch |receive_error| switch (receive_error) {
-                    error.WouldBlock, error.EndOfStream => continue,
+                    error.EndOfStream => continue,
                     else => {
                         try self.disconnected_users.append(self.context_state.allocator, user_identifier);
                         continue;
