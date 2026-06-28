@@ -26,7 +26,6 @@ pub fn Event(comptime IncomingType: type, comptime OutgoingType: type) type {
         pub fn iterator(
             self: *const @This(),
             context_state: *context.Context,
-            comptime role: Role,
         ) EventIterator(IncomingType) {
             return EventIterator(IncomingType).init(
                 context_state,
