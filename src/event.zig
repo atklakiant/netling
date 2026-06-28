@@ -6,11 +6,9 @@ const std = @import("std");
 var global_event_counter: u16 = 0;
 
 fn allocateEventIdentifier() u16 {
-    const identifier = global_event_counter;
-
     global_event_counter += 1;
 
-    return identifier;
+    return global_event_counter;
 }
 
 pub const Role = enum {
