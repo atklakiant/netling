@@ -3,12 +3,10 @@ const compress = @import("compress.zig");
 const context = @import("context.zig");
 const std = @import("std");
 
-var global_event_counter: u16 = 0;
+var global_event_counter = std.atomic.Value(u16).init(0);
 
 fn allocateEventIdentifier() u16 {
-    global_event_counter += 1;
-
-    return global_event_counter;
+    return global_event_counter.fetchAdd(1, .monotonic);
 }
 
 pub const Role = enum {
