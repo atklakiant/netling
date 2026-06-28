@@ -3,12 +3,6 @@ const compress = @import("compress.zig");
 const context = @import("context.zig");
 const std = @import("std");
 
-var global_event_counter = std.atomic.Value(u16).init(0);
-
-fn allocateEventIdentifier() u16 {
-    return global_event_counter.fetchAdd(1, .monotonic);
-}
-
 pub const Role = enum {
     client,
     server,
@@ -22,9 +16,9 @@ pub fn Event(comptime IncomingType: type, comptime OutgoingType: type) type {
         event_identifier: u16,
         compression_method: compress.Method,
 
-        pub fn init(compression_method: compress.Method) @This() {
+        pub fn init(event_id: u16, compression_method: compress.Method) @This() {
             return .{
-                .event_identifier = allocateEventIdentifier(),
+                .event_identifier = event_id,
                 .compression_method = compression_method,
             };
         }
