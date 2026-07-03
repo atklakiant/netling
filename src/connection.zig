@@ -111,7 +111,7 @@ pub const Connection = struct {
     }
 
     pub fn awaitWrite(self: *Connection) !void {
-        const task = self.write_task orelse return;
+        var task = self.write_task orelse return;
         const result = task.await(self.io);
 
         defer self.write_task = null;
