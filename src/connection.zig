@@ -37,7 +37,7 @@ pub const Connection = struct {
         };
     }
 
-    pub fn close(self: *Connection) void {
+    pub fn close(self: *Connection) !void {
         {
             try self.close_mutex.lock(self.io);
             defer self.close_mutex.unlock(self.io);

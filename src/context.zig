@@ -34,7 +34,7 @@ pub const Context = struct {
         var connection_iterator = self.connections.valueIterator();
 
         while (connection_iterator.next()) |existing_connection| {
-            existing_connection.close();
+            try existing_connection.close();
         }
 
         self.connections.deinit();
@@ -63,7 +63,7 @@ pub const Context = struct {
         if (self.connections.fetchRemove(user_identifier)) |removed_entry| {
             var removed_connection = removed_entry.value;
 
-            removed_connection.close();
+            try removed_connection.close();
         }
 
         var index: usize = 0;
