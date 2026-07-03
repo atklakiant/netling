@@ -229,7 +229,7 @@ pub const Connection = struct {
         return result.packet.?;
     }
 
-    pub fn tryAwaitRead(self: *Connection) ReceivedPacket {
+    pub fn tryAwaitRead(self: *Connection) ?ReceivedPacket {
         const task = self.read_task orelse return null;
         const result = task.await(self.io);
 
