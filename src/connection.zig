@@ -137,6 +137,7 @@ pub const Connection = struct {
 
         var serialized_buffer: [wire.maximum_packet_payload_size]u8 = undefined;
         var serialized_writer: std.Io.Writer = .fixed(&serialized_buffer);
+
         try serialize.serializeValue(PayloadType, payload_value, &serialized_writer);
 
         const serialized_bytes = serialized_writer.buffered();
@@ -158,17 +159,21 @@ pub const Connection = struct {
 
         var stream_writer = self.stream.writer(self.io, &self.write_buffer);
 
-        // Wrap all stream operations with disconnect-aware error handling
         stream_writer.interface.writeStruct(packet_header, .little) catch |err| {
             switch (err) {
-                error.Unexpected, error.ConnectionResetByPeer, error.BrokenPipe, error.NotConnected, error.WouldBlock => return error.ConnectionClosed,
+                error.WriteFailed,
+                error.ConnectionResetByPeer,
+                error.BrokenPipe,
+                error.NotConnected,
+                error.WouldBlock,
+                => return error.ConnectionClosed,
                 else => return err,
             }
         };
 
         stream_writer.interface.writeAll(compressed_bytes) catch |err| {
             switch (err) {
-                error.Unexpected,
+                error.WriteFailed,
                 error.ConnectionResetByPeer,
                 error.BrokenPipe,
                 error.NotConnected,
@@ -180,7 +185,7 @@ pub const Connection = struct {
 
         stream_writer.interface.flush() catch |err| {
             switch (err) {
-                error.Unexpected,
+                error.WriteFailed,
                 error.ConnectionResetByPeer,
                 error.BrokenPipe,
                 error.NotConnected,
@@ -231,19 +236,19 @@ pub const Connection = struct {
 
     pub fn tryAwaitRead(self: *Connection) ?ReceivedPacket {
         if (self.read_task == null) return null;
-        
+
         var task: std.Io.Future(ReadResult) = self.read_task.?;
-        
+
         self.read_task = null;
-        
+
         const result = task.await(self.io);
-        
+
         if (result.err) |error_value| {
             std.log.err("[netling] read failed: {}", .{error_value});
 
             return null;
         }
-        
+
         return result.packet;
     }
 
