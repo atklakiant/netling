@@ -33,9 +33,10 @@ pub const Server = struct {
         }
 
         self.listening_server.deinit(self.io);
-        
+
         try self.context_state.deinit();
     }
+
     pub fn acceptAsync(self: *Server) !void {
         if (self.accept_task != null) return error.AcceptAlreadyPending;
 
