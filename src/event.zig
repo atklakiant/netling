@@ -42,6 +42,7 @@ pub fn Event(comptime IncomingType: type, comptime OutgoingType: type) type {
             context_state: *context.Context,
         ) EventIterator(IncomingType) {
             return EventIterator(IncomingType).init(
+                self.io,
                 context_state,
                 self.event_identifier,
                 self.compression_method,
