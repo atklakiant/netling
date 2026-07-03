@@ -168,7 +168,7 @@ pub const Connection = struct {
             alloc: std.mem.Allocator,
 
             pub fn run(context: @This()) !ReceivedPacket {
-                return context.conn.receivePacketBlocking(context.alloc);
+                return context.connection.receivePacketBlocking(context.alloc);
             }
         };
 
