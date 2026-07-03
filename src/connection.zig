@@ -240,7 +240,7 @@ pub const Connection = struct {
     }
 
     pub fn receivePacket(self: *Connection, allocator: std.mem.Allocator) !ReceivedPacket {
-        try self.receivePacketAsync(self, allocator);
+        try self.receivePacketAsync(allocator);
         return try self.awaitRead();
     }
 };
