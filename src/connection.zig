@@ -47,7 +47,7 @@ pub const Connection = struct {
         {
             try self.close_mutex.lock(self.io);
             defer self.close_mutex.unlock(self.io);
-            
+
             if (self.closed) return;
 
             self.closed = true;
@@ -55,12 +55,12 @@ pub const Connection = struct {
 
         if (self.read_task) |*task| {
             _ = task.cancel(self.io);
-            
+
             self.read_task = null;
         }
 
         if (self.write_task) |*task| {
-            task.cancel(self.io);
+            _ = task.cancel(self.io);
 
             self.write_task = null;
         }
