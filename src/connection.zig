@@ -158,18 +158,26 @@ pub const Connection = struct {
     pub fn receivePacketAsync(self: *Connection, allocator: std.mem.Allocator) !void {
         {
             try self.read_mutex.lock(self.io);
-
             defer self.read_mutex.unlock(self.io);
 
             if (self.read_task != null) return error.ReadInProgress;
         }
 
-        self.read_task = self.io.async(ReadContext.run, .{
-            ReadContext{
-                .conn = self,
-                .alloc = allocator,
-            },
-        });
+        const ReadContext = struct {
+            conn: *Connection,
+            alloc: std.mem.Allocator,
+
+            pub fn run(ctx: @This()) !ReceivedPacket {
+                return ctx.conn.receivePacketBlocking(ctx.alloc);
+            }
+        };
+
+        const context: ReadContext = .{
+            .conn = self,
+            .alloc = allocator,
+        };
+
+        self.read_task = self.io.async(ReadContext.run, .{context});
     }
 
     pub fn awaitRead(self: *Connection) !ReceivedPacket {
@@ -243,16 +251,6 @@ pub const Connection = struct {
     pub fn receivePacket(self: *Connection, allocator: std.mem.Allocator) !ReceivedPacket {
         try self.receivePacketAsync(allocator);
         return try self.awaitRead();
-    }
-};
-
-const ReadContext = struct {
-    connection: *Connection,
-    alloc: std.mem.Allocator,
-    io: std.Io,
-
-    pub fn run(self: @This()) !ReceivedPacket {
-        return self.connection.receivePacketBlocking(self.alloc);
     }
 };
 
