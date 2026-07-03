@@ -229,20 +229,19 @@ pub const Connection = struct {
         return result.packet.?;
     }
 
-    pub fn tryAwaitRead(self: *Connection) ?ReceivedPacket {
+    pub fn tryAwaitRead(self: *Connection) ReceivedPacket {
         const task = self.read_task orelse return null;
+        const result = task.await(self.io);
 
-        if (task.tryAwait(self.io)) |result| {
-            self.read_task = null;
+        self.read_task = null;
 
-            if (result.err) |error_value| {
-                std.log.err("[netling] read failed: {}", .{error_value});
+        if (result.err) |error_value| {
+            std.log.err("[netling] read failed: {}", .{error_value});
 
-                return null;
-            }
+            return null;
+        }
 
-            return result.packet;
-        } else return null;
+        return result.packet;
     }
 
     fn receivePacketBlocking(self: *Connection, allocator: std.mem.Allocator) !ReceivedPacket {

@@ -83,15 +83,7 @@ pub const Context = struct {
 
         const connection_pointer = self.connections.getPtr(user_identifier) orelse return null;
 
-        if (connection_pointer.tryAwaitRead()) |packet| {
-            return packet;
-        } else |error_value| {
-            std.log.err("[netling] read error for user {}: {}", .{ user_identifier, error_value });
-
-            return null;
-        }
-
-        return null;
+        return connection_pointer.tryAwaitRead();
     }
 
     pub fn getConnection(self: *Context, user_identifier: UserId) !?connection.Connection {
@@ -140,24 +132,16 @@ pub const Context = struct {
             const user_id = self.pending_reads.items[index];
             const connection_pointer = self.connections.getPtr(user_id).?;
 
-            const maybe_packet = connection_pointer.tryAwaitRead();
+            const packet = connection_pointer.tryAwaitRead();
 
-            if (maybe_packet) |packet| {
-                _ = self.pending_reads.orderedRemove(index);
+            _ = self.pending_reads.orderedRemove(index);
 
-                try completed.append(self.allocator, .{
-                    .user_identifier = user_id,
-                    .packet = packet,
-                });
-            } else {
-                if (connection_pointer.read_task == null) {
-                    _ = self.pending_reads.orderedRemove(index);
+            try completed.append(self.allocator, .{
+                .user_identifier = user_id,
+                .packet = packet,
+            });
 
-                    try connection_pointer.close();
-
-                    _ = self.connections.remove(user_id);
-                } else index += 1;
-            }
+            index += 1;
         }
 
         return completed;
