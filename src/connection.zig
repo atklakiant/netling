@@ -92,13 +92,13 @@ pub const Connection = struct {
             }
         };
 
-        self.write_task = self.io.async(SendContext.run, .{
+        self.write_task = self.io.async(SendContext.run, .{.{
             .connection = self,
             .event_id = event_identifier,
             .payload = payload_value,
             .method = compression_method,
             .io = self.io,
-        });
+        }});
     }
 
     pub fn awaitWrite(self: *Connection) !void {
@@ -177,7 +177,7 @@ pub const Connection = struct {
             .alloc = allocator,
         };
 
-        self.read_task = self.io.async(try ReadContext.run, .{context});
+        self.read_task = self.io.async(ReadContext.run, .{context});
     }
 
     pub fn awaitRead(self: *Connection) !ReceivedPacket {
