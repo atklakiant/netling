@@ -7,7 +7,12 @@ pub const Server = struct {
     context_state: context.Context,
     listening_server: std.Io.net.Server,
 
-    accept_task: ?std.Io.Future(std.Io.net.Stream) = null,
+    accept_task: ?std.Io.Future(AcceptResult) = null,
+
+    pub const AcceptResult = struct {
+        stream: ?std.Io.net.Stream = null,
+        err: ?anyerror = null,
+    };
 
     pub fn init(
         io: std.Io,
@@ -28,7 +33,7 @@ pub const Server = struct {
     pub fn deinit(self: *Server) !void {
         if (self.accept_task) |*task| {
             _ = task.cancel(self.io);
-
+            
             self.accept_task = null;
         }
 
@@ -40,21 +45,39 @@ pub const Server = struct {
     pub fn acceptAsync(self: *Server) !void {
         if (self.accept_task != null) return error.AcceptAlreadyPending;
 
-        self.accept_task = self.listening_server.accept(self.io);
+        const AcceptContext = struct {
+            server: *std.Io.net.Server,
+            io: std.Io,
+
+            pub fn run(accept_context: @This()) AcceptResult {
+                const stream = accept_context.server.accept(accept_context.io) catch |error_value| {
+                    return .{ .err = error_value };
+                };
+
+                return .{ .stream = stream };
+            }
+        };
+
+        self.accept_task = self.io.async(AcceptContext.run, .{.{
+            .server = &self.listening_server,
+            .io = self.io,
+        }});
     }
 
     pub fn tryAccept(self: *Server) !?context.UserId {
         const task = self.accept_task orelse return null;
 
-        if (task.tryAwait(self.io)) |stream| {
+        if (task.tryAwait(self.io)) |result| {
             self.accept_task = null;
 
-            const new_stream = stream catch |error_value| return error_value;
+            if (result.err) |error_value| return error_value;
+
+            const new_stream = result.stream.?;
 
             return try self.context_state.addConnection(new_stream);
-        } else {
-            return null;
         }
+
+        return null;
     }
 
     pub fn awaitAccept(self: *Server) !context.UserId {
@@ -62,7 +85,11 @@ pub const Server = struct {
 
         defer self.accept_task = null;
 
-        const new_stream = try task.await(self.io);
+        const result = task.await(self.io);
+
+        if (result.err) |error_value| return error_value;
+
+        const new_stream = result.stream.?;
 
         return try self.context_state.addConnection(new_stream);
     }
@@ -93,8 +120,8 @@ pub const Server = struct {
     pub fn startReceives(self: *Server) !void {
         var iterator = self.context_state.connections.keyIterator();
 
-        while (iterator.next()) |user_id_ptr| {
-            try self.context_state.startReceive(user_id_ptr.*);
+        while (iterator.next()) |user_id| {
+            try self.context_state.startReceive(user_id.*);
         }
     }
 

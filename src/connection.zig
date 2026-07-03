@@ -15,11 +15,20 @@ pub const Connection = struct {
     read_mutex: std.Io.Mutex,
     write_mutex: std.Io.Mutex,
 
-    read_task: ?std.Io.Future(anyerror!ReceivedPacket) = null,
-    write_task: ?std.Io.Future(anyerror!void) = null,
+    read_task: ?std.Io.Future(ReadResult) = null,
+    write_task: ?std.Io.Future(WriteResult) = null,
 
     closed: bool = false,
     close_mutex: std.Io.Mutex,
+
+    pub const ReadResult = struct {
+        packet: ?ReceivedPacket = null,
+        err: ?anyerror = null,
+    };
+
+    pub const WriteResult = struct {
+        err: ?anyerror = null,
+    };
 
     pub fn init(io: std.Io, stream: std.Io.net.Stream, user_identifier: UserId) Connection {
         return .{
@@ -38,7 +47,7 @@ pub const Connection = struct {
         {
             try self.close_mutex.lock(self.io);
             defer self.close_mutex.unlock(self.io);
-
+            
             if (self.closed) return;
 
             self.closed = true;
@@ -46,9 +55,10 @@ pub const Connection = struct {
 
         if (self.read_task) |*task| {
             _ = try task.cancel(self.io);
-
+            
             self.read_task = null;
         }
+
         if (self.write_task) |*task| {
             try task.cancel(self.io);
 
@@ -77,15 +87,18 @@ pub const Connection = struct {
             event_id: u16,
             payload: PayloadType,
             method: compress.Method,
-            io: std.Io,
 
-            pub fn run(context: @This()) !void {
-                return context.connection.sendPacketBlocking(
+            pub fn run(context: @This()) WriteResult {
+                context.connection.sendPacketBlocking(
                     context.event_id,
                     PayloadType,
                     context.payload,
                     context.method,
-                );
+                ) catch |error_value| {
+                    return .{ .err = error_value };
+                };
+
+                return .{};
             }
         };
 
@@ -94,16 +107,16 @@ pub const Connection = struct {
             .event_id = event_identifier,
             .payload = payload_value,
             .method = compression_method,
-            .io = self.io,
         }});
     }
 
     pub fn awaitWrite(self: *Connection) !void {
         const task = self.write_task orelse return;
+        const result = task.await(self.io);
 
         defer self.write_task = null;
 
-        try task.await(self.io);
+        if (result.err) |error_value| return error_value;
     }
 
     fn sendPacketBlocking(
@@ -119,7 +132,6 @@ pub const Connection = struct {
         {
             try self.close_mutex.lock(self.io);
             defer self.close_mutex.unlock(self.io);
-
             if (self.closed) return error.ConnectionClosed;
         }
 
@@ -164,25 +176,30 @@ pub const Connection = struct {
             connection: *Connection,
             alloc: std.mem.Allocator,
 
-            pub fn run(context: @This()) !ReceivedPacket {
-                return context.connection.receivePacketBlocking(context.alloc);
+            pub fn run(context: @This()) ReadResult {
+                const packet = context.connection.receivePacketBlocking(context.alloc) catch |error_value| {
+                    return .{ .err = error_value };
+                };
+
+                return .{ .packet = packet };
             }
         };
 
-        const context: ReadContext = .{
+        self.read_task = self.io.async(ReadContext.run, .{.{
             .connection = self,
             .alloc = allocator,
-        };
-
-        self.read_task = self.io.async(ReadContext.run, .{context});
+        }});
     }
 
     pub fn awaitRead(self: *Connection) !ReceivedPacket {
         const task = self.read_task orelse return error.NoReadPending;
+        const result = task.await(self.io);
 
         defer self.read_task = null;
 
-        return try task.await(self.io);
+        if (result.err) |error_value| return error_value;
+
+        return result.packet.?;
     }
 
     pub fn tryAwaitRead(self: *Connection) ?ReceivedPacket {
@@ -191,7 +208,13 @@ pub const Connection = struct {
         if (task.tryAwait(self.io)) |result| {
             self.read_task = null;
 
-            return result catch |error_value| return error_value;
+            if (result.err) |error_value| {
+                std.log.err("[netling] read failed: {}", .{error_value});
+
+                return null;
+            }
+
+            return result.packet;
         } else return null;
     }
 
@@ -201,9 +224,7 @@ pub const Connection = struct {
 
         {
             try self.close_mutex.lock(self.io);
-
             defer self.close_mutex.unlock(self.io);
-
             if (self.closed) return error.ConnectionClosed;
         }
 
@@ -218,7 +239,6 @@ pub const Connection = struct {
         const decompression_method = wire.flagsToMethod(packet_header.flags);
 
         var decompressed_buffer: [wire.maximum_packet_payload_size]u8 = undefined;
-
         const decompressed_length = compress.decompressWithMethod(
             decompression_method,
             compressed_payload,
