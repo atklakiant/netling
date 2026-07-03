@@ -144,7 +144,7 @@ pub fn EventIterator(comptime IncomingType: type) type {
 
             var packets = try self.context_state.pollReceived();
 
-            defer packets.deinit();
+            defer packets.deinit(self.context_state.allocator);
 
             for (packets.items) |*packet_with_id| {
                 defer packet_with_id.packet.deinit();
