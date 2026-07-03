@@ -40,9 +40,8 @@ pub fn Event(comptime IncomingType: type, comptime OutgoingType: type) type {
         pub fn iterator(
             self: *const @This(),
             context_state: *context.Context,
-            comptime role: Role,
         ) EventIterator(IncomingType) {
-            return EventIterator(IncomingType, OutgoingType, role).init(
+            return EventIterator(IncomingType).init(
                 context_state,
                 self.event_identifier,
                 self.compression_method,
