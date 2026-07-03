@@ -164,10 +164,11 @@ pub const Connection = struct {
             if (self.read_task != null) return error.ReadInProgress;
         }
 
-        self.read_task = self.io.async(self.io, ReadContext.run, .{
-            .connection = self,
-            .alloc = allocator,
-            .io = self.io,
+        self.read_task = self.io.async(ReadContext.run, .{
+            ReadContext{
+                .conn = self,
+                .alloc = allocator,
+            },
         });
     }
 
