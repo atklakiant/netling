@@ -165,7 +165,6 @@ pub const Connection = struct {
         }
 
         self.read_task = self.io.async(ReadContext.run, .{
-            .connection = self,
             .alloc = allocator,
             .io = self.io,
         });

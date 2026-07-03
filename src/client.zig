@@ -20,8 +20,8 @@ pub const Client = struct {
         };
     }
 
-    pub fn deinit(self: *Client) void {
-        self.context_state.deinit();
+    pub fn deinit(self: *Client) !void {
+        try self.context_state.deinit();
     }
 
     pub fn serverIdentifier(self: *Client) context.UserId {
