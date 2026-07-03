@@ -119,8 +119,8 @@ pub const Server = struct {
         try connection.awaitWrite();
     }
 
-    pub fn disconnect(self: *Server, user_identifier: context.UserId) void {
-        self.context_state.removeConnection(user_identifier);
+    pub fn disconnect(self: *Server, user_identifier: context.UserId) !void {
+        try self.context_state.removeConnection(user_identifier);
     }
 };
 

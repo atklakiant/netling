@@ -27,7 +27,7 @@ pub const Context = struct {
         };
     }
 
-    pub fn deinit(self: *Context) void {
+    pub fn deinit(self: *Context) !void {
         try self.lockContext();
         defer self.unlockContext();
 
@@ -56,7 +56,7 @@ pub const Context = struct {
         return assigned_identifier;
     }
 
-    pub fn removeConnection(self: *Context, user_identifier: UserId) void {
+    pub fn removeConnection(self: *Context, user_identifier: UserId) !void {
         try self.lockContext();
         defer self.unlockContext();
 
@@ -77,7 +77,7 @@ pub const Context = struct {
         }
     }
 
-    pub fn pollConnection(self: *Context, user_identifier: UserId) ?connection.ReceivedPacket {
+    pub fn pollConnection(self: *Context, user_identifier: UserId) !?connection.ReceivedPacket {
         try self.lockContext();
         defer self.unlockContext();
 
@@ -105,7 +105,7 @@ pub const Context = struct {
         return self.connections.getPtr(user_identifier);
     }
 
-    pub fn lockContext(self: *Context) void {
+    pub fn lockContext(self: *Context) !void {
         try self.mutex.lock(self.io);
     }
 

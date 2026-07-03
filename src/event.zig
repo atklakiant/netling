@@ -43,7 +43,6 @@ pub fn Event(comptime IncomingType: type, comptime OutgoingType: type) type {
             comptime role: Role,
         ) EventIterator(IncomingType, OutgoingType, role) {
             return EventIterator(IncomingType, OutgoingType, role).init(
-        
                 context_state,
                 self.event_identifier,
                 self.compression_method,
@@ -138,7 +137,7 @@ pub fn EventIterator(comptime IncomingType: type) type {
             self.pending_read_index = 0;
 
             for (self.disconnected_users.items) |disconnected_identifier| {
-                self.context_state.removeConnection(disconnected_identifier);
+                try self.context_state.removeConnection(disconnected_identifier);
             }
 
             self.disconnected_users.clearRetainingCapacity();

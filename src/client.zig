@@ -69,8 +69,8 @@ pub const Client = struct {
         try self.context_state.startReceive(self.assigned_identifier);
     }
 
-    pub fn tryReceive(self: *Client) ?context.ReceivedPacketWithId {
-        return self.context_state.pollConnection(self.assigned_identifier);
+    pub fn tryReceive(self: *Client) !?context.ReceivedPacketWithId {
+        return try self.context_state.pollConnection(self.assigned_identifier);
     }
 
     pub fn awaitReceive(self: *Client) !connection.ReceivedPacket {
