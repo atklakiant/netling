@@ -19,10 +19,10 @@ pub const wire_header_size: usize = @sizeOf(WireHeader);
 
 pub fn methodToFlags(method: compress.Method) PacketFlags {
     return switch (method) {
-        .none => PacketFlags{},
-        .rle => PacketFlags{ .rle_compressed = true },
-        .bitpack => PacketFlags{ .bitpacked = true },
-        .rle_then_bitpack => PacketFlags{ .rle_compressed = true, .bitpacked = true },
+        .none => .{},
+        .rle => .{ .rle_compressed = true },
+        .bitpack => .{ .bitpacked = true },
+        .rle_then_bitpack => .{ .rle_compressed = true, .bitpacked = true },
     };
 }
 

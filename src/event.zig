@@ -24,11 +24,15 @@ pub fn Event(comptime IncomingType: type, comptime OutgoingType: type) type {
         pub const Outgoing = OutgoingType;
 
         event_identifier: u16,
+
+        io: std.Io,
         compression_method: compress.Method,
 
-        pub fn init(compression_method: compress.Method) @This() {
+        pub fn init(io: std.Io, compression_method: compress.Method) @This() {
             return .{
                 .event_identifier = allocateEventIdentifier(),
+
+                .io = io,
                 .compression_method = compression_method,
             };
         }
@@ -39,6 +43,7 @@ pub fn Event(comptime IncomingType: type, comptime OutgoingType: type) type {
             comptime role: Role,
         ) EventIterator(IncomingType, OutgoingType, role) {
             return EventIterator(IncomingType, OutgoingType, role).init(
+        
                 context_state,
                 self.event_identifier,
                 self.compression_method,
@@ -88,22 +93,26 @@ pub fn EventIterator(comptime IncomingType: type) type {
         };
 
         context_state: *context.Context,
-        event_identifier: u16,
         compression_method: compress.Method,
-        pending_items: std.ArrayList(IncomingItem),
+        io: std.Io,
+
+        event_identifier: u16,
         pending_read_index: usize,
+        pending_items: std.ArrayList(IncomingItem),
         disconnected_users: std.ArrayList(context.UserId),
 
         pub fn init(
+            io: std.Io,
             context_state: *context.Context,
             event_identifier: u16,
             compression_method: compress.Method,
         ) @This() {
             return .{
+                .io = io,
                 .context_state = context_state,
-                .event_identifier = event_identifier,
                 .compression_method = compression_method,
 
+                .event_identifier = event_identifier,
                 .pending_read_index = 0,
 
                 .pending_items = .empty,
