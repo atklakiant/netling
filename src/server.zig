@@ -27,7 +27,7 @@ pub const Server = struct {
 
     pub fn deinit(self: *Server) void {
         if (self.accept_task) |*task| {
-            task.cancel(self.io);
+            _ = task.cancel(self.io);
 
             self.accept_task = null;
         }
@@ -38,7 +38,7 @@ pub const Server = struct {
     pub fn acceptAsync(self: *Server) !void {
         if (self.accept_task != null) return error.AcceptAlreadyPending;
 
-        self.accept_task = self.listening_server.acceptAsync(self.io);
+        self.accept_task = self.listening_server.accept(self.io);
     }
 
     pub fn tryAccept(self: *Server) !?context.UserId {
