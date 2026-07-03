@@ -45,12 +45,12 @@ pub const Connection = struct {
         }
 
         if (self.read_task) |*task| {
-            _ = task.cancel(self.io);
+            _ = try task.cancel(self.io);
 
             self.read_task = null;
         }
         if (self.write_task) |*task| {
-            task.cancel(self.io);
+            try task.cancel(self.io);
 
             self.write_task = null;
         }
