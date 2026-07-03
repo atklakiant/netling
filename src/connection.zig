@@ -192,7 +192,7 @@ pub const Connection = struct {
     }
 
     pub fn awaitRead(self: *Connection) !ReceivedPacket {
-        const task = self.read_task orelse return error.NoReadPending;
+        var task = self.read_task orelse return error.NoReadPending;
         const result = task.await(self.io);
 
         defer self.read_task = null;
