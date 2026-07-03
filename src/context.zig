@@ -94,7 +94,7 @@ pub const Context = struct {
         return null;
     }
 
-    pub fn getConnection(self: *Context, user_identifier: UserId) ?connection.Connection {
+    pub fn getConnection(self: *Context, user_identifier: UserId) !?connection.Connection {
         try self.mutex.lock(self.io);
         defer self.mutex.unlock(self.io);
 

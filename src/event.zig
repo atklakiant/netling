@@ -55,7 +55,7 @@ pub fn Event(comptime IncomingType: type, comptime OutgoingType: type) type {
             outgoing_value: OutgoingType,
             target_user_identifier: context.UserId,
         ) !void {
-            const target_connection = context_state.getConnection(target_user_identifier) orelse return error.UnknownUser;
+            const target_connection = try context_state.getConnection(target_user_identifier) orelse return error.UnknownUser;
 
             try target_connection.sendPacket(
                 self.event_identifier,

@@ -28,8 +28,8 @@ pub const Client = struct {
         return self.assigned_identifier;
     }
 
-    fn serverConnection(self: *Client) ?*connection.Connection {
-        return self.context_state.getConnection(self.serverassigned_identifier_user_identifier);
+    fn serverConnection(self: *Client) !?*connection.Connection {
+        return try self.context_state.getConnection(self.serverassigned_identifier_user_identifier);
     }
 
     pub fn sendAsync(
