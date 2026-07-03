@@ -33,7 +33,7 @@ pub const Server = struct {
     pub fn deinit(self: *Server) !void {
         if (self.accept_task) |*task| {
             _ = task.cancel(self.io);
-            
+
             self.accept_task = null;
         }
 
@@ -81,7 +81,7 @@ pub const Server = struct {
     }
 
     pub fn awaitAccept(self: *Server) !context.UserId {
-        const task = self.accept_task orelse return error.NoAcceptPending;
+        var task = self.accept_task orelse return error.NoAcceptPending;
 
         defer self.accept_task = null;
 
