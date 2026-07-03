@@ -129,7 +129,7 @@ pub fn EventIterator(comptime IncomingType: type) type {
                 const current_item = self.pending_items.items[self.pending_read_index];
 
                 self.pending_read_index += 1;
-
+                
                 return current_item;
             }
 
@@ -142,27 +142,16 @@ pub fn EventIterator(comptime IncomingType: type) type {
 
             self.disconnected_users.clearRetainingCapacity();
 
-            var connection_iterator = self.context_state.connections.iterator();
+            var packets = try self.context_state.pollReceived();
 
-            while (connection_iterator.next()) |connection_entry| {
-                const user_identifier = connection_entry.key_ptr.*;
-                const existing_connection = connection_entry.value_ptr;
+            defer packets.deinit();
 
-                var received_packet = existing_connection.receivePacket(
-                    self.context_state.allocator,
-                ) catch |receive_error| switch (receive_error) {
-                    error.WouldBlock, error.EndOfStream => continue,
-                    else => {
-                        try self.disconnected_users.append(self.context_state.allocator, user_identifier);
-                        continue;
-                    },
-                };
+            for (packets.items) |packet_with_id| {
+                defer packet_with_id.packet.deinit();
 
-                defer received_packet.deinit();
+                if (packet_with_id.packet.event_identifier != self.event_identifier) continue;
 
-                if (received_packet.event_identifier != self.event_identifier) continue;
-
-                var payload_reader: std.Io.Reader = .fixed(received_packet.payload);
+                var payload_reader: std.Io.Reader = .fixed(packet_with_id.packet.payload);
 
                 const deserialized_value = try serialize.deserializeValue(
                     IncomingType,
@@ -172,7 +161,7 @@ pub fn EventIterator(comptime IncomingType: type) type {
 
                 try self.pending_items.append(self.context_state.allocator, .{
                     .value = deserialized_value,
-                    .from_user = user_identifier,
+                    .from_user = packet_with_id.user_identifier,
                 });
             }
 
@@ -181,7 +170,7 @@ pub fn EventIterator(comptime IncomingType: type) type {
             const first_item = self.pending_items.items[0];
 
             self.pending_read_index = 1;
-
+            
             return first_item;
         }
     };

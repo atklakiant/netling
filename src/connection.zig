@@ -137,7 +137,6 @@ pub const Connection = struct {
 
         var serialized_buffer: [wire.maximum_packet_payload_size]u8 = undefined;
         var serialized_writer: std.Io.Writer = .fixed(&serialized_buffer);
-
         try serialize.serializeValue(PayloadType, payload_value, &serialized_writer);
 
         const serialized_bytes = serialized_writer.buffered();
@@ -159,9 +158,37 @@ pub const Connection = struct {
 
         var stream_writer = self.stream.writer(self.io, &self.write_buffer);
 
-        try stream_writer.interface.writeStruct(packet_header, .little);
-        try stream_writer.interface.writeAll(compressed_bytes);
-        try stream_writer.interface.flush();
+        // Wrap all stream operations with disconnect-aware error handling
+        stream_writer.interface.writeStruct(packet_header, .little) catch |err| {
+            switch (err) {
+                error.Unexpected, error.ConnectionResetByPeer, error.BrokenPipe, error.NotConnected, error.WouldBlock => return error.ConnectionClosed,
+                else => return err,
+            }
+        };
+
+        stream_writer.interface.writeAll(compressed_bytes) catch |err| {
+            switch (err) {
+                error.Unexpected,
+                error.ConnectionResetByPeer,
+                error.BrokenPipe,
+                error.NotConnected,
+                error.WouldBlock,
+                => return error.ConnectionClosed,
+                else => return err,
+            }
+        };
+
+        stream_writer.interface.flush() catch |err| {
+            switch (err) {
+                error.Unexpected,
+                error.ConnectionResetByPeer,
+                error.BrokenPipe,
+                error.NotConnected,
+                error.WouldBlock,
+                => return error.ConnectionClosed,
+                else => return err,
+            }
+        };
     }
 
     pub fn receivePacketAsync(self: *Connection, allocator: std.mem.Allocator) !void {
@@ -229,16 +256,37 @@ pub const Connection = struct {
         }
 
         var stream_reader = self.stream.reader(self.io, &self.read_buffer);
-        const packet_header = try stream_reader.interface.takeStruct(wire.WireHeader, .little);
+
+        const packet_header = stream_reader.interface.takeStruct(wire.WireHeader, .little) catch |err| {
+            switch (err) {
+                error.Unexpected,
+                error.ConnectionResetByPeer,
+                error.BrokenPipe,
+                error.NotConnected,
+                error.WouldBlock,
+                => return error.ConnectionClosed,
+                else => return err,
+            }
+        };
 
         var compressed_payload_buffer: [wire.maximum_packet_payload_size]u8 = undefined;
         const compressed_payload = compressed_payload_buffer[0..packet_header.payload_length];
 
-        try stream_reader.interface.readSliceAll(compressed_payload);
+        stream_reader.interface.readSliceAll(compressed_payload) catch |err| {
+            switch (err) {
+                error.Unexpected,
+                error.ConnectionResetByPeer,
+                error.BrokenPipe,
+                error.NotConnected,
+                error.WouldBlock,
+                => return error.ConnectionClosed,
+                else => return err,
+            }
+        };
 
         const decompression_method = wire.flagsToMethod(packet_header.flags);
-
         var decompressed_buffer: [wire.maximum_packet_payload_size]u8 = undefined;
+
         const decompressed_length = compress.decompressWithMethod(
             decompression_method,
             compressed_payload,

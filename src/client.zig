@@ -29,7 +29,7 @@ pub const Client = struct {
     }
 
     fn serverConnection(self: *Client) !?*connection.Connection {
-        return try self.context_state.getConnection(self.serverassigned_identifier_user_identifier);
+        return try self.context_state.getConnection(self.assigned_identifier);
     }
 
     pub fn sendAsync(
@@ -59,7 +59,7 @@ pub const Client = struct {
         event_identifier: u16,
         comptime PayloadType: type,
         payload_value: PayloadType,
-        compression_method: compress.zig.Method,
+        compression_method: compress.Method,
     ) !void {
         try self.sendAsync(event_identifier, PayloadType, payload_value, compression_method);
         try self.awaitSend();

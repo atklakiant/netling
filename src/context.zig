@@ -140,18 +140,24 @@ pub const Context = struct {
             const user_id = self.pending_reads.items[index];
             const connection_pointer = self.connections.getPtr(user_id).?;
 
-            if (connection_pointer.tryAwaitRead()) |packet| {
+            const maybe_packet = connection_pointer.tryAwaitRead();
+
+            if (maybe_packet) |packet| {
                 _ = self.pending_reads.orderedRemove(index);
 
                 try completed.append(self.allocator, .{
                     .user_identifier = user_id,
                     .packet = packet,
                 });
-            } else |_| {
-                _ = self.pending_reads.orderedRemove(index);
-            }
+            } else {
+                if (connection_pointer.read_task == null) {
+                    _ = self.pending_reads.orderedRemove(index);
 
-            index += 1;
+                    try connection_pointer.close();
+
+                    _ = self.connections.remove(user_id);
+                } else index += 1;
+            }
         }
 
         return completed;
