@@ -129,7 +129,7 @@ pub fn EventIterator(comptime IncomingType: type) type {
                 const current_item = self.pending_items.items[self.pending_read_index];
 
                 self.pending_read_index += 1;
-                
+
                 return current_item;
             }
 
@@ -146,7 +146,7 @@ pub fn EventIterator(comptime IncomingType: type) type {
 
             defer packets.deinit();
 
-            for (packets.items) |packet_with_id| {
+            for (packets.items) |*packet_with_id| {
                 defer packet_with_id.packet.deinit();
 
                 if (packet_with_id.packet.event_identifier != self.event_identifier) continue;
@@ -170,7 +170,7 @@ pub fn EventIterator(comptime IncomingType: type) type {
             const first_item = self.pending_items.items[0];
 
             self.pending_read_index = 1;
-            
+
             return first_item;
         }
     };

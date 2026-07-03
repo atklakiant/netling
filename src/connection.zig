@@ -230,17 +230,20 @@ pub const Connection = struct {
     }
 
     pub fn tryAwaitRead(self: *Connection) ?ReceivedPacket {
-        const task = self.read_task orelse return null;
-        const result = task.await(self.io);
-
+        if (self.read_task == null) return null;
+        
+        var task: std.Io.Future(ReadResult) = self.read_task.?;
+        
         self.read_task = null;
-
+        
+        const result = task.await(self.io);
+        
         if (result.err) |error_value| {
             std.log.err("[netling] read failed: {}", .{error_value});
 
             return null;
         }
-
+        
         return result.packet;
     }
 
