@@ -15,7 +15,7 @@ pub const Connection = struct {
     read_mutex: std.Io.Mutex,
     write_mutex: std.Io.Mutex,
 
-    read_task: ?std.Io.Future(!ReceivedPacket) = null,
+    read_task: ?std.Io.Future(ReceivedPacket) = null,
     write_task: ?std.Io.Future(void) = null,
 
     closed: bool = false,
