@@ -29,7 +29,7 @@ pub const Client = struct {
     }
 
     fn serverConnection(self: *Client) !?*connection.Connection {
-        return try self.context_state.getConnectionLocked(self.assigned_identifier);
+        return self.context_state.getConnectionLocked(self.assigned_identifier);
     }
 
     pub fn sendAsync(
