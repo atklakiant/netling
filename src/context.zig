@@ -86,13 +86,6 @@ pub const Context = struct {
         return connection_pointer.tryAwaitRead();
     }
 
-    pub fn getConnection(self: *Context, user_identifier: UserId) !?connection.Connection {
-        try self.mutex.lock(self.io);
-        defer self.mutex.unlock(self.io);
-
-        return self.connections.get(user_identifier);
-    }
-
     pub fn getConnectionLocked(self: *Context, user_identifier: UserId) ?*connection.Connection {
         return self.connections.getPtr(user_identifier);
     }
