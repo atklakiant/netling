@@ -289,8 +289,11 @@ const PeerConnection = struct {
     write_buffer: [8192]u8 = undefined,
 
     read_task: ?std.Io.Future(ReadResult) = null,
+    read_done: std.atomic.Value(bool) = .init(false),
+
     write_queue: std.ArrayList(QueuedWrite) = .empty,
     write_task: ?std.Io.Future(WriteResult) = null,
+    write_done: std.atomic.Value(bool) = .init(false),
 
     closed: bool = false,
 
@@ -310,12 +313,25 @@ const PeerConnection = struct {
             conn: *PeerConnection,
 
             fn run(ctx: @This()) ReadResult {
+                defer ctx.conn.read_done.store(true, .release);
+
                 const packet = ctx.conn.receiveBlocking() catch |err| return .{ .err = err };
                 return .{ .packet = packet };
             }
         };
 
+        self.read_done.store(false, .release);
         self.read_task = g.io.async(Ctx.run, .{.{ .conn = self }});
+    }
+
+    fn pollReadTask(self: *PeerConnection) ?ReadResult {
+        if (self.read_task == null) return null;
+        if (!self.read_done.load(.acquire)) return null;
+
+        var task = self.read_task.?;
+        self.read_task = null;
+
+        return task.await(g.io);
     }
 
     fn receiveBlocking(self: *PeerConnection) !RawPacket {
@@ -350,11 +366,14 @@ const PeerConnection = struct {
     fn pumpWrites(self: *PeerConnection) void {
         if (self.closed) return;
 
-        if (self.write_task) |*task| {
-            if (task.await(g.io)) |result| {
-                self.write_task = null;
-                if (result.err) |err| std.log.err("[netling] write failed: {}", .{err});
-            } else return;
+        if (self.write_task != null) {
+            if (!self.write_done.load(.acquire)) return;
+
+            var task = self.write_task.?;
+            self.write_task = null;
+
+            const result = task.await(g.io);
+            if (result.err) |err| std.log.err("[netling] write failed: {}", .{err});
         }
 
         if (self.write_queue.items.len == 0) return;
@@ -367,6 +386,7 @@ const PeerConnection = struct {
 
             fn run(ctx: @This()) WriteResult {
                 defer g.allocator.free(ctx.item.payload);
+                defer ctx.conn.write_done.store(true, .release);
 
                 ctx.conn.sendBlocking(ctx.item.event_identifier, ctx.item.payload, ctx.item.method) catch |err| {
                     return .{ .err = err };
@@ -376,6 +396,7 @@ const PeerConnection = struct {
             }
         };
 
+        self.write_done.store(false, .release);
         self.write_task = g.io.async(Ctx.run, .{.{ .conn = self, .item = queued }});
     }
 
@@ -418,6 +439,7 @@ const GlobalState = struct {
 
     listener: ?std.Io.net.Server = null,
     accept_task: ?std.Io.Future(AcceptResult) = null,
+    accept_done: std.atomic.Value(bool) = .init(false),
 
     connections: std.AutoHashMap(UserId, PeerConnection) = undefined,
     next_user_identifier: UserId = 1,
@@ -525,16 +547,12 @@ pub fn poll() !void {
         conn.startReceiveIfIdle();
         conn.pumpWrites();
 
-        if (conn.read_task) |*task| {
-            if (task.await(g.io)) |result| {
-                conn.read_task = null;
-
-                if (result.err) |_| {
-                    try dead.append(g.allocator, id);
-                } else if (result.packet) |packet| {
-                    const list_ptr = g.incoming.getPtr(id).?;
-                    try list_ptr.append(g.allocator, packet);
-                }
+        if (conn.pollReadTask()) |result| {
+            if (result.err) |_| {
+                try dead.append(g.allocator, id);
+            } else if (result.packet) |packet| {
+                const list_ptr = g.incoming.getPtr(id).?;
+                try list_ptr.append(g.allocator, packet);
             }
         }
     }
@@ -551,23 +569,30 @@ fn pollAccept() !void {
             server: *std.Io.net.Server,
 
             fn run(ctx: @This()) GlobalState.AcceptResult {
+                defer g.accept_done.store(true, .release);
+
                 const stream = ctx.server.accept(g.io) catch |err| return .{ .err = err };
                 return .{ .stream = stream };
             }
         };
 
+        g.accept_done.store(false, .release);
         g.accept_task = g.io.async(Ctx.run, .{.{ .server = &g.listener.? }});
+        return;
     }
 
-    if (g.accept_task.?.await(g.io)) |result| {
-        g.accept_task = null;
+    if (!g.accept_done.load(.acquire)) return;
 
-        if (result.err) |err| {
-            std.log.err("[netling] accept failed: {}", .{err});
-        } else if (result.stream) |stream| {
-            const id = try addConnection(stream);
-            try g.connected.append(g.allocator, id);
-        }
+    var task = g.accept_task.?;
+    g.accept_task = null;
+
+    const result = task.await(g.io);
+
+    if (result.err) |err| {
+        std.log.err("[netling] accept failed: {}", .{err});
+    } else if (result.stream) |stream| {
+        const id = try addConnection(stream);
+        try g.connected.append(g.allocator, id);
     }
 }
 
