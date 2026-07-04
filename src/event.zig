@@ -55,7 +55,7 @@ pub fn Event(comptime IncomingType: type, comptime OutgoingType: type) type {
             outgoing_value: OutgoingType,
             target_user_identifier: context.UserId,
         ) !void {
-            var target_connection = context_state.getConnectionLocked(target_user_identifier) orelse return error.UnknownUser;
+            var target_connection = try context_state.getConnection(target_user_identifier) orelse return error.UnknownUser;
 
             try target_connection.sendPacket(
                 self.event_identifier,
@@ -70,18 +70,21 @@ pub fn Event(comptime IncomingType: type, comptime OutgoingType: type) type {
             context_state: *context.Context,
             outgoing_value: OutgoingType,
         ) !void {
-            try context_state.mutex.lock(self.io);
-            defer context_state.mutex.unlock(self.io);
+            try context_state.lockContext();
+            defer context_state.unlockContext();
 
             var connection_iterator = context_state.connections.valueIterator();
 
             while (connection_iterator.next()) |existing_connection| {
-                try existing_connection.sendPacket(
+                existing_connection.sendPacketAsync(
                     self.event_identifier,
                     OutgoingType,
                     outgoing_value,
                     self.compression_method,
-                );
+                ) catch |error_value| switch (error_value) {
+                    error.WriteInProgress => continue,
+                    else => |value| return value,
+                };
             }
         }
 
@@ -91,20 +94,23 @@ pub fn Event(comptime IncomingType: type, comptime OutgoingType: type) type {
             outgoing_value: OutgoingType,
             excluded_user_identifier: context.UserId,
         ) !void {
-            try context_state.mutex.lock(self.io);
-            defer context_state.mutex.unlock(self.io);
+            try context_state.lockContext();
+            defer context_state.unlockContext();
 
             var connection_iterator = context_state.connections.valueIterator();
 
             while (connection_iterator.next()) |existing_connection| {
                 if (existing_connection.user_identifier == excluded_user_identifier) continue;
 
-                try existing_connection.sendPacket(
+                existing_connection.sendPacketAsync(
                     self.event_identifier,
                     OutgoingType,
                     outgoing_value,
                     self.compression_method,
-                );
+                ) catch |error_value| switch (error_value) {
+                    error.WriteInProgress => continue,
+                    else => |value| return value,
+                };
             }
         }
     };
