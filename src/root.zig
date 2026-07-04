@@ -425,9 +425,18 @@ const PeerConnection = struct {
         }
         var writer = &self.writer.?;
 
-        writer.interface.writeStruct(header, .little) catch return NetError.ConnectionClosed;
-        writer.interface.writeAll(compressed_buf[0..compressed_len]) catch return NetError.ConnectionClosed;
-        writer.interface.flush() catch return NetError.ConnectionClosed;
+        writer.interface.writeStruct(header, .little) catch |err| {
+            if (err == error.Unexpected) return NetError.ConnectionClosed;
+            return NetError.ConnectionClosed;
+        };
+        writer.interface.writeAll(compressed_buf[0..compressed_len]) catch |err| {
+            if (err == error.Unexpected) return NetError.ConnectionClosed;
+            return NetError.ConnectionClosed;
+        };
+        writer.interface.flush() catch |err| {
+            if (err == error.Unexpected) return NetError.ConnectionClosed;
+            return NetError.ConnectionClosed;
+        };
     }
 
     fn close(self: *PeerConnection) void {
