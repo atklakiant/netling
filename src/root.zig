@@ -582,7 +582,6 @@ fn pollAccept() !void {
     }
 
     if (!g.accept_done.load(.acquire)) return;
-
     var task = g.accept_task.?;
     g.accept_task = null;
 
@@ -624,11 +623,18 @@ pub fn connectedUsers(allocator: std.mem.Allocator) ![]UserId {
     return try result.toOwnedSlice(allocator);
 }
 
-pub fn registerEvent(comptime T: type, id: u16, method: CompressionMethod) Event(T) {
-    return .{
-        .event_identifier = id,
-        .compression_method = method,
-    };
+pub fn isConnected(user_identifier: UserId) bool {
+    if (!g_initialized) return false;
+
+    return g.connections.contains(user_identifier);
+}
+
+pub fn registerEvent(
+    comptime T: type,
+    id: u16,
+    method: CompressionMethod,
+) Event(T) {
+    return .{ .event_identifier = id, .compression_method = method };
 }
 
 pub fn Event(comptime T: type) type {
