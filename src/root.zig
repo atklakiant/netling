@@ -351,7 +351,7 @@ const PeerConnection = struct {
         if (self.closed) return;
 
         if (self.write_task) |*task| {
-            if (task.tryAwait(g.io)) |result| {
+            if (task.await(g.io)) |result| {
                 self.write_task = null;
                 if (result.err) |err| std.log.err("[netling] write failed: {}", .{err});
             } else return;
@@ -526,7 +526,7 @@ pub fn poll() !void {
         conn.pumpWrites();
 
         if (conn.read_task) |*task| {
-            if (task.tryAwait(g.io)) |result| {
+            if (task.await(g.io)) |result| {
                 conn.read_task = null;
 
                 if (result.err) |_| {
@@ -559,7 +559,7 @@ fn pollAccept() !void {
         g.accept_task = g.io.async(Ctx.run, .{.{ .server = &g.listener.? }});
     }
 
-    if (g.accept_task.?.tryAwait(g.io)) |result| {
+    if (g.accept_task.?.await(g.io)) |result| {
         g.accept_task = null;
 
         if (result.err) |err| {
