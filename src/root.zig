@@ -288,8 +288,8 @@ const PeerConnection = struct {
     read_buffer: [8192]u8 = undefined,
     write_buffer: [8192]u8 = undefined,
 
-    reader: ?std.Io.Reader = null,
-    writer: ?std.Io.Writer = null,
+    reader: ?std.Io.net.Stream.Reader = null,
+    writer: ?std.Io.net.Stream.Writer = null,
 
     read_task: ?std.Io.Future(ReadResult) = null,
     read_done: std.atomic.Value(bool) = .init(false),
