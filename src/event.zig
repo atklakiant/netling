@@ -55,7 +55,7 @@ pub fn Event(comptime IncomingType: type, comptime OutgoingType: type) type {
             outgoing_value: OutgoingType,
             target_user_identifier: context.UserId,
         ) !void {
-            var target_connection = try context_state.getConnection(target_user_identifier) orelse return error.UnknownUser;
+            var target_connection = try context_state.getConnectionLocked(target_user_identifier) orelse return error.UnknownUser;
 
             try target_connection.sendPacket(
                 self.event_identifier,
@@ -70,6 +70,9 @@ pub fn Event(comptime IncomingType: type, comptime OutgoingType: type) type {
             context_state: *context.Context,
             outgoing_value: OutgoingType,
         ) !void {
+            try context_state.mutex.lock(self.io);
+            defer context_state.mutex.unlock(self.io);
+
             var connection_iterator = context_state.connections.valueIterator();
 
             while (connection_iterator.next()) |existing_connection| {
@@ -88,6 +91,9 @@ pub fn Event(comptime IncomingType: type, comptime OutgoingType: type) type {
             outgoing_value: OutgoingType,
             excluded_user_identifier: context.UserId,
         ) !void {
+            try context_state.mutex.lock(self.io);
+            defer context_state.mutex.unlock(self.io);
+
             var connection_iterator = context_state.connections.valueIterator();
 
             while (connection_iterator.next()) |existing_connection| {

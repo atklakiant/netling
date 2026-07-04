@@ -143,7 +143,7 @@ pub const Server = struct {
     }
 
     pub fn awaitSendTo(self: *Server, user_identifier: context.UserId) !void {
-        const maybe_connection = try self.context_state.getConnection(user_identifier);
+        const maybe_connection = try self.context_state.getConnectionLocked(user_identifier);
         const connection = maybe_connection orelse return error.UnknownUser;
 
         try connection.awaitWrite();
