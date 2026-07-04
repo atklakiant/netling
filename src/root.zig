@@ -624,13 +624,21 @@ pub fn connectedUsers(allocator: std.mem.Allocator) ![]UserId {
     return try result.toOwnedSlice(allocator);
 }
 
-var next_event_identifier: u16 = 0;
+var global_event_counter: u16 = 0;
+
+pub fn getId() u16 {
+    const id = global_event_counter;
+
+    global_event_counter += 1;
+
+    return id;
+}
 
 pub fn registerEvent(comptime T: type, method: CompressionMethod) Event(T) {
-    const id = next_event_identifier;
-    next_event_identifier += 1;
-
-    return .{ .event_identifier = id, .compression_method = method };
+    return .{
+        .event_identifier = getId(),
+        .compression_method = method,
+    };
 }
 
 pub fn Event(comptime T: type) type {
