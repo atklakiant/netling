@@ -1,37 +1,4 @@
-//! netling — minimal networked event bus.
-//!
-//! Usage (this is the entire public API surface):
-//!
-//!     const netling = @import("netling");
-//!
-//!     try netling.startServer(io, allocator, address);      // OR
-//!     const server_id = try netling.startClient(io, allocator, address);
-//!
-//!     const Input = []const u8;
-//!     const leave_event = netling.registerEvent(Input, .bitpack);
-//!
-//!     while (running) {
-//!         try netling.poll(); // drives accept/read/write + housekeeping, non-blocking
-//!
-//!         try leave_event.sendTo(server_id, "kicked");
-//!         try leave_event.broadcastAll("explosion");
-//!         try leave_event.broadcastExcept(server_id, "boom");
-//!
-//!         for (try leave_event.pollEvent(server_id)) |data| {
-//!             // data: Input, already deserialized + decompressed
-//!         }
-//!     }
-//!
-//! There is no Context, no Connection, no Mutex, and no other file to import.
-//! Every file previously named root/client/server/context/connection/wire/
-//! compress/serialize has been folded in here. `Event`/`registerEvent` is the
-//! only thing a consumer needs to know exists.
-
 const std = @import("std");
-
-// =====================================================================
-// Public types
-// =====================================================================
 
 pub const UserId = u32;
 
@@ -53,10 +20,6 @@ pub const NetError = error{
     ReadInProgress,
     AcceptInProgress,
 };
-
-// =====================================================================
-// Wire format (was wire.zig)
-// =====================================================================
 
 const PacketFlags = packed struct(u8) {
     rle_compressed: bool = false,
@@ -87,10 +50,6 @@ fn flagsToMethod(flags: PacketFlags) CompressionMethod {
     if (flags.bitpacked) return .bitpack;
     return .none;
 }
-
-// =====================================================================
-// Compression (was compress.zig)
-// =====================================================================
 
 const RunLength = struct {
     fn encode(input: []const u8, output: []u8) usize {
@@ -243,10 +202,6 @@ fn decompressWithMethod(method: CompressionMethod, input: []const u8, output: []
     };
 }
 
-// =====================================================================
-// Serialization (was serialize.zig)
-// =====================================================================
-
 fn serializeValue(comptime T: type, value: T, writer: *std.Io.Writer) !void {
     switch (@typeInfo(T)) {
         .void => {},
@@ -317,13 +272,9 @@ fn deserializeValue(comptime T: type, reader: *std.Io.Reader, allocator: std.mem
     }
 }
 
-// =====================================================================
-// Internal connection (was connection.zig) — never touched by consumers
-// =====================================================================
-
 const RawPacket = struct {
     event_identifier: u16,
-    payload: []u8, // owned by g.allocator
+    payload: []u8,
 
     fn deinit(self: *RawPacket) void {
         g.allocator.free(self.payload);
@@ -351,7 +302,7 @@ const PeerConnection = struct {
 
     const QueuedWrite = struct {
         event_identifier: u16,
-        payload: []u8, // owned, freed after send
+        payload: []u8,
         method: CompressionMethod,
     };
 
@@ -373,10 +324,6 @@ const PeerConnection = struct {
         self.read_task = g.io.async(Ctx.run, .{.{ .conn = self }});
     }
 
-    /// Non-blocking: returns the finished result if the in-flight read task
-    /// has completed, otherwise null. Never touches the Future unless the
-    /// atomic flag confirms the task already finished, so await() returns
-    /// immediately.
     fn pollReadTask(self: *PeerConnection) ?ReadResult {
         if (self.read_task == null) return null;
         if (!self.read_done.load(.acquire)) return null;
@@ -404,7 +351,6 @@ const PeerConnection = struct {
         };
     }
 
-    /// Non-blocking enqueue. Actual send happens during poll().
     fn queueSend(self: *PeerConnection, event_identifier: u16, comptime T: type, value: T, method: CompressionMethod) !void {
         var serialized_buf: [maximum_packet_payload_size]u8 = undefined;
         var writer: std.Io.Writer = .fixed(&serialized_buf);
@@ -420,9 +366,8 @@ const PeerConnection = struct {
     fn pumpWrites(self: *PeerConnection) void {
         if (self.closed) return;
 
-        // Reap a finished write, if any (non-blocking via the done flag).
         if (self.write_task != null) {
-            if (!self.write_done.load(.acquire)) return; // still in flight
+            if (!self.write_done.load(.acquire)) return;
 
             var task = self.write_task.?;
             self.write_task = null;
@@ -485,12 +430,6 @@ const PeerConnection = struct {
     }
 };
 
-// =====================================================================
-// Global network state — replaces Context/Client/Server entirely.
-// Every consumer touches exactly zero of this; it's reached only through
-// registerEvent()'s returned handle and the top-level init/poll functions.
-// =====================================================================
-
 const Role = enum { client, server };
 
 const GlobalState = struct {
@@ -505,15 +444,10 @@ const GlobalState = struct {
     connections: std.AutoHashMap(UserId, PeerConnection) = undefined,
     next_user_identifier: UserId = 1,
 
-    // incoming[user_id] = list of not-yet-consumed raw packets for that peer
     incoming: std.AutoHashMap(UserId, std.ArrayList(RawPacket)) = undefined,
 
-    // scratch buffer reused by Event.pollEvent so callers never have to free
     scratch: std.ArrayList(u8) = .empty,
-
-    // filled during poll(), drained by takeDisconnected()
     disconnected: std.ArrayList(UserId) = .empty,
-    // filled during poll(), drained by takeConnected()
     connected: std.ArrayList(UserId) = .empty,
 
     const AcceptResult = struct { stream: ?std.Io.net.Stream = null, err: ?anyerror = null };
@@ -536,15 +470,12 @@ fn ensureInit(io: std.Io, allocator: std.mem.Allocator, role: Role) !void {
     g_initialized = true;
 }
 
-/// Start listening as a server. Call poll() every frame afterward.
 pub fn startServer(io: std.Io, allocator: std.mem.Allocator, bind_address: std.Io.net.IpAddress) !void {
     try ensureInit(io, allocator, .server);
 
     g.listener = try bind_address.listen(io, .{ .reuse_address = true });
 }
 
-/// Connect as a client. Returns the UserId to use when talking to the server.
-/// Call poll() every frame afterward.
 pub fn startClient(io: std.Io, allocator: std.mem.Allocator, server_address: std.Io.net.IpAddress) !UserId {
     try ensureInit(io, allocator, .client);
 
@@ -600,9 +531,6 @@ fn removeConnection(id: UserId) void {
     }
 }
 
-/// Drives everything: accepting new clients, pumping reads/writes, and
-/// filing incoming packets so pollEvent() can find them. Call this once per
-/// frame/tick from your main loop. Non-blocking.
 pub fn poll() !void {
     if (!g_initialized) return NetError.NotInitialized;
 
@@ -653,7 +581,7 @@ fn pollAccept() !void {
         return;
     }
 
-    if (!g.accept_done.load(.acquire)) return; // still in flight
+    if (!g.accept_done.load(.acquire)) return;
 
     var task = g.accept_task.?;
     g.accept_task = null;
@@ -668,9 +596,6 @@ fn pollAccept() !void {
     }
 }
 
-/// Returns UserIds that connected since the last call to this function.
-/// (Server-side only — a client only ever has one connection, its
-/// UserId is the return value of startClient().)
 pub fn takeConnected(allocator: std.mem.Allocator) ![]UserId {
     if (!g_initialized) return NetError.NotInitialized;
 
@@ -680,8 +605,6 @@ pub fn takeConnected(allocator: std.mem.Allocator) ![]UserId {
     return result;
 }
 
-/// Returns UserIds that disconnected since the last call to this function.
-/// Use this to know when to tell everyone else a player left.
 pub fn takeDisconnected(allocator: std.mem.Allocator) ![]UserId {
     if (!g_initialized) return NetError.NotInitialized;
 
@@ -691,7 +614,6 @@ pub fn takeDisconnected(allocator: std.mem.Allocator) ![]UserId {
     return result;
 }
 
-/// Currently connected UserIds. Caller owns the returned slice.
 pub fn connectedUsers(allocator: std.mem.Allocator) ![]UserId {
     if (!g_initialized) return NetError.NotInitialized;
 
@@ -702,37 +624,11 @@ pub fn connectedUsers(allocator: std.mem.Allocator) ![]UserId {
     return try result.toOwnedSlice(allocator);
 }
 
-/// Whether `user_identifier` currently has a live connection. Use this to
-/// tell "we got disconnected" apart from a genuine error before sending.
-pub fn isConnected(user_identifier: UserId) bool {
-    if (!g_initialized) return false;
-
-    return g.connections.contains(user_identifier);
-}
-
-// =====================================================================
-// Public Event API — the ONLY thing consumers should ever hold a
-// reference to.
-// =====================================================================
-
-/// Register a new event type. Call once (e.g. as a global/comptime-adjacent
-/// `const` binding) — this is the only netling API surface a feature file
-/// should ever need to import.
-///
-/// The event id is derived at comptime from the call site (file:line:column)
-/// so `registerEvent` can be assigned straight to a `pub const` without
-/// needing any mutable global comptime state.
-pub fn registerEvent(
-    comptime T: type,
-    method: CompressionMethod,
-    comptime src: std.builtin.SourceLocation = @src(),
-) Event(T) {
-    const id: u16 = comptime blk: {
-        const location = src.file ++ ":" ++ std.fmt.comptimePrint("{d}:{d}", .{ src.line, src.column });
-        break :blk @truncate(std.hash.Wyhash.hash(0, location));
+pub fn registerEvent(comptime T: type, id: u16, method: CompressionMethod) Event(T) {
+    return .{
+        .event_identifier = id,
+        .compression_method = method,
     };
-
-    return .{ .event_identifier = id, .compression_method = method };
 }
 
 pub fn Event(comptime T: type) type {
@@ -769,9 +665,6 @@ pub fn Event(comptime T: type) type {
             }
         }
 
-        /// Returns every value received for this event from `from_user` since
-        /// the last call. Valid until the next pollEvent call for this event.
-        /// Automatically deserialized + decompressed — nothing else to do.
         pub fn pollEvent(self: Self, from_user: UserId) ![]T {
             if (!g_initialized) return NetError.NotInitialized;
 
