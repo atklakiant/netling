@@ -81,6 +81,26 @@ pub fn Event(comptime IncomingType: type, comptime OutgoingType: type) type {
                 );
             }
         }
+
+        pub fn broadcastExcept(
+            self: *const @This(),
+            context_state: *context.Context,
+            outgoing_value: OutgoingType,
+            excluded_user_identifier: context.UserId,
+        ) !void {
+            var connection_iterator = context_state.connections.valueIterator();
+
+            while (connection_iterator.next()) |existing_connection| {
+                if (existing_connection.user_identifier == excluded_user_identifier) continue;
+
+                try existing_connection.sendPacket(
+                    self.event_identifier,
+                    OutgoingType,
+                    outgoing_value,
+                    self.compression_method,
+                );
+            }
+        }
     };
 }
 
