@@ -338,6 +338,8 @@ const PeerConnection = struct {
         var reader = self.stream.reader(g.io, &self.read_buffer);
         const header = reader.interface.takeStruct(WireHeader, .little) catch return NetError.ConnectionClosed;
 
+        if (header.payload_length > maximum_packet_payload_size) return NetError.ConnectionClosed;
+
         var compressed_buf: [maximum_packet_payload_size]u8 = undefined;
         const compressed = compressed_buf[0..header.payload_length];
         reader.interface.readSliceAll(compressed) catch return NetError.ConnectionClosed;
