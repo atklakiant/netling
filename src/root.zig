@@ -34,7 +34,6 @@ const WireHeader = extern struct {
 };
 
 const maximum_packet_payload_size: usize = 65536;
-var next_event_identifier: u16 = 0;
 
 fn methodToFlags(method: CompressionMethod) PacketFlags {
     return switch (method) {
@@ -50,13 +49,6 @@ fn flagsToMethod(flags: PacketFlags) CompressionMethod {
     if (flags.rle_compressed) return .rle;
     if (flags.bitpacked) return .bitpack;
     return .none;
-}
-
-pub fn registerEvent(comptime T: type, method: CompressionMethod) Event(T) {
-    const id = next_event_identifier;
-    next_event_identifier += 1;
-
-    return .{ .event_identifier = id, .compression_method = method };
 }
 
 const RunLength = struct {
@@ -359,7 +351,7 @@ const PeerConnection = struct {
         if (self.closed) return;
 
         if (self.write_task) |*task| {
-            if (task.await(g.io)) |result| {
+            if (task.tryAwait(g.io)) |result| {
                 self.write_task = null;
                 if (result.err) |err| std.log.err("[netling] write failed: {}", .{err});
             } else return;
@@ -431,7 +423,10 @@ const GlobalState = struct {
     next_user_identifier: UserId = 1,
 
     incoming: std.AutoHashMap(UserId, std.ArrayList(RawPacket)) = undefined,
+
     scratch: std.ArrayList(u8) = .empty,
+    disconnected: std.ArrayList(UserId) = .empty,
+    connected: std.ArrayList(UserId) = .empty,
 
     const AcceptResult = struct { stream: ?std.Io.net.Stream = null, err: ?anyerror = null };
 };
@@ -485,6 +480,8 @@ pub fn shutdown() void {
     if (g.listener) |*l| l.deinit(g.io);
 
     g.scratch.deinit(g.allocator);
+    g.disconnected.deinit(g.allocator);
+    g.connected.deinit(g.allocator);
 
     g_initialized = false;
 }
@@ -542,7 +539,10 @@ pub fn poll() !void {
         }
     }
 
-    for (dead.items) |id| removeConnection(id);
+    for (dead.items) |id| {
+        removeConnection(id);
+        try g.disconnected.append(g.allocator, id);
+    }
 }
 
 fn pollAccept() !void {
@@ -565,9 +565,47 @@ fn pollAccept() !void {
         if (result.err) |err| {
             std.log.err("[netling] accept failed: {}", .{err});
         } else if (result.stream) |stream| {
-            _ = try addConnection(stream);
+            const id = try addConnection(stream);
+            try g.connected.append(g.allocator, id);
         }
     }
+}
+
+pub fn takeConnected(allocator: std.mem.Allocator) ![]UserId {
+    if (!g_initialized) return NetError.NotInitialized;
+
+    const result = try allocator.dupe(UserId, g.connected.items);
+    g.connected.clearRetainingCapacity();
+
+    return result;
+}
+
+pub fn takeDisconnected(allocator: std.mem.Allocator) ![]UserId {
+    if (!g_initialized) return NetError.NotInitialized;
+
+    const result = try allocator.dupe(UserId, g.disconnected.items);
+    g.disconnected.clearRetainingCapacity();
+
+    return result;
+}
+
+pub fn connectedUsers(allocator: std.mem.Allocator) ![]UserId {
+    if (!g_initialized) return NetError.NotInitialized;
+
+    var result: std.ArrayList(UserId) = .empty;
+    var it = g.connections.keyIterator();
+    while (it.next()) |id| try result.append(allocator, id.*);
+
+    return try result.toOwnedSlice(allocator);
+}
+
+var next_event_identifier: u16 = 0;
+
+pub fn registerEvent(comptime T: type, method: CompressionMethod) Event(T) {
+    const id = next_event_identifier;
+    next_event_identifier += 1;
+
+    return .{ .event_identifier = id, .compression_method = method };
 }
 
 pub fn Event(comptime T: type) type {
@@ -598,7 +636,6 @@ pub fn Event(comptime T: type) type {
             if (!g_initialized) return NetError.NotInitialized;
 
             var it = g.connections.valueIterator();
-
             while (it.next()) |conn| {
                 if (conn.user_identifier == excluded) continue;
                 try conn.queueSend(self.event_identifier, T, value, self.compression_method);
