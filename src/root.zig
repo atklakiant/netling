@@ -35,14 +35,6 @@ const WireHeader = extern struct {
 
 const maximum_payload_size: usize = 65536;
 
-var next_event_identifier: u16 = 0;
-
-fn assignEventIdentifier() u16 {
-    const assigned_identifier = next_event_identifier;
-    next_event_identifier += 1;
-    return assigned_identifier;
-}
-
 fn compressionToFlags(method: CompressionMethod) PacketFlags {
     return switch (method) {
         .none => .{},
@@ -659,8 +651,10 @@ pub fn isConnected(user_identifier: UserId) bool {
     return global_state.connections.contains(user_identifier);
 }
 
-pub fn registerEvent(comptime ValueType: type, method: CompressionMethod) NetworkEvent(ValueType) {
-    return .{ .event_identifier = assignEventIdentifier(), .compression_method = method };
+pub fn registerEvent(comptime ValueType: type, comptime event_kind: anytype, method: CompressionMethod) NetworkEvent(ValueType) {
+    if (@typeInfo(@TypeOf(event_kind)) != .@"enum") @compileError("[netling] event_kind must be an enum value, e.g. EventKind.move");
+
+    return .{ .event_identifier = @intFromEnum(event_kind), .compression_method = method };
 }
 
 pub fn NetworkEvent(comptime ValueType: type) type {
