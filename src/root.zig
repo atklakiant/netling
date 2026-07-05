@@ -33,9 +33,17 @@ const WireHeader = extern struct {
     flags: PacketFlags,
 };
 
-const maximum_packet_payload_size: usize = 65536;
+const maximum_payload_size: usize = 65536;
 
-fn methodToFlags(method: CompressionMethod) PacketFlags {
+var next_event_identifier: u16 = 0;
+
+fn assignEventIdentifier() u16 {
+    const assigned_identifier = next_event_identifier;
+    next_event_identifier += 1;
+    return assigned_identifier;
+}
+
+fn compressionToFlags(method: CompressionMethod) PacketFlags {
     return switch (method) {
         .none => .{},
         .rle => .{ .rle_compressed = true },
@@ -44,7 +52,7 @@ fn methodToFlags(method: CompressionMethod) PacketFlags {
     };
 }
 
-fn flagsToMethod(flags: PacketFlags) CompressionMethod {
+fn flagsToCompression(flags: PacketFlags) CompressionMethod {
     if (flags.rle_compressed and flags.bitpacked) return .both;
     if (flags.rle_compressed) return .rle;
     if (flags.bitpacked) return .bitpack;
@@ -53,134 +61,134 @@ fn flagsToMethod(flags: PacketFlags) CompressionMethod {
 
 const RunLength = struct {
     fn encode(input: []const u8, output: []u8) usize {
-        var in_i: usize = 0;
-        var out_i: usize = 0;
+        var input_index: usize = 0;
+        var output_index: usize = 0;
 
-        while (in_i < input.len) {
-            const byte = input[in_i];
-            var run: usize = 1;
+        while (input_index < input.len) {
+            const current_byte = input[input_index];
+            var run_length: usize = 1;
 
-            while (in_i + run < input.len and input[in_i + run] == byte and run < 255) run += 1;
+            while (input_index + run_length < input.len and input[input_index + run_length] == current_byte and run_length < 255) run_length += 1;
 
-            if (run >= 3 or byte == 0xFE) {
-                if (out_i + 3 > output.len) break;
-                output[out_i] = 0xFE;
-                output[out_i + 1] = byte;
-                output[out_i + 2] = @intCast(run);
-                out_i += 3;
+            if (run_length >= 3 or current_byte == 0xFE) {
+                if (output_index + 3 > output.len) break;
+                output[output_index] = 0xFE;
+                output[output_index + 1] = current_byte;
+                output[output_index + 2] = @intCast(run_length);
+                output_index += 3;
             } else {
-                for (0..run) |_| {
-                    if (out_i >= output.len) break;
-                    output[out_i] = byte;
-                    out_i += 1;
+                for (0..run_length) |_| {
+                    if (output_index >= output.len) break;
+                    output[output_index] = current_byte;
+                    output_index += 1;
                 }
             }
 
-            in_i += run;
+            input_index += run_length;
         }
 
-        return out_i;
+        return output_index;
     }
 
     fn decode(input: []const u8, output: []u8) usize {
-        var in_i: usize = 0;
-        var out_i: usize = 0;
+        var input_index: usize = 0;
+        var output_index: usize = 0;
 
-        while (in_i < input.len) {
-            if (input[in_i] == 0xFE and in_i + 2 < input.len) {
-                const run_byte = input[in_i + 1];
-                const run_count = input[in_i + 2];
+        while (input_index < input.len) {
+            if (input[input_index] == 0xFE and input_index + 2 < input.len) {
+                const run_byte = input[input_index + 1];
+                const run_count = input[input_index + 2];
 
                 for (0..run_count) |_| {
-                    if (out_i >= output.len) break;
-                    output[out_i] = run_byte;
-                    out_i += 1;
+                    if (output_index >= output.len) break;
+                    output[output_index] = run_byte;
+                    output_index += 1;
                 }
 
-                in_i += 3;
+                input_index += 3;
             } else {
-                if (out_i >= output.len) break;
-                output[out_i] = input[in_i];
-                out_i += 1;
-                in_i += 1;
+                if (output_index >= output.len) break;
+                output[output_index] = input[input_index];
+                output_index += 1;
+                input_index += 1;
             }
         }
 
-        return out_i;
+        return output_index;
     }
 };
 
 const Bitpack = struct {
     fn encode(input: []const u8, output: []u8) usize {
         if (input.len % 4 != 0) {
-            const n = @min(input.len, output.len);
-            @memcpy(output[0..n], input[0..n]);
-            return n;
+            const copy_length = @min(input.len, output.len);
+            @memcpy(output[0..copy_length], input[0..copy_length]);
+            return copy_length;
         }
 
-        var in_i: usize = 0;
-        var out_i: usize = 0;
+        var input_index: usize = 0;
+        var output_index: usize = 0;
 
-        while (in_i + 4 <= input.len) {
-            const value = std.mem.readInt(u32, input[in_i..][0..4], .little);
-            const needed: u8 = if (value <= 0xFF) 1 else if (value <= 0xFFFF) 2 else if (value <= 0xFFFFFF) 3 else 4;
+        while (input_index + 4 <= input.len) {
+            const value = std.mem.readInt(u32, input[input_index..][0..4], .little);
+            const needed_bytes: u8 = if (value <= 0xFF) 1 else if (value <= 0xFFFF) 2 else if (value <= 0xFFFFFF) 3 else 4;
 
-            if (out_i + 1 + needed > output.len) break;
+            if (output_index + 1 + needed_bytes > output.len) break;
 
-            output[out_i] = needed;
-            out_i += 1;
+            output[output_index] = needed_bytes;
+            output_index += 1;
 
-            for (0..needed) |b| {
-                output[out_i] = @intCast((value >> @intCast(b * 8)) & 0xFF);
-                out_i += 1;
+            for (0..needed_bytes) |byte_index| {
+                output[output_index] = @intCast((value >> @intCast(byte_index * 8)) & 0xFF);
+                output_index += 1;
             }
 
-            in_i += 4;
+            input_index += 4;
         }
 
-        return out_i;
+        return output_index;
     }
 
     fn decode(input: []const u8, output: []u8) usize {
-        var in_i: usize = 0;
-        var out_i: usize = 0;
+        var input_index: usize = 0;
+        var output_index: usize = 0;
 
-        while (in_i < input.len) {
-            if (in_i + 1 > input.len) break;
+        while (input_index < input.len) {
+            if (input_index + 1 > input.len) break;
 
-            const needed = input[in_i];
-            in_i += 1;
+            const needed_bytes = input[input_index];
+            input_index += 1;
 
-            if (needed == 0 or needed > 4) break;
-            if (in_i + needed > input.len) break;
-            if (out_i + 4 > output.len) break;
+            if (needed_bytes == 0 or needed_bytes > 4) break;
+            if (input_index + needed_bytes > input.len) break;
+            if (output_index + 4 > output.len) break;
 
             var value: u32 = 0;
-            for (0..needed) |b| value |= @as(u32, input[in_i + b]) << @intCast(b * 8);
+            for (0..needed_bytes) |byte_index| value |= @as(u32, input[input_index + byte_index]) << @intCast(byte_index * 8);
 
-            in_i += needed;
+            input_index += needed_bytes;
 
-            std.mem.writeInt(u32, output[out_i..][0..4], value, .little);
-            out_i += 4;
+            std.mem.writeInt(u32, output[output_index..][0..4], value, .little);
+            output_index += 4;
         }
 
-        return out_i;
+        return output_index;
     }
 };
 
 fn compressWithMethod(method: CompressionMethod, input: []const u8, output: []u8) usize {
     return switch (method) {
         .none => blk: {
-            const n = @min(input.len, output.len);
-            @memcpy(output[0..n], input[0..n]);
-            break :blk n;
+            const copy_length = @min(input.len, output.len);
+            @memcpy(output[0..copy_length], input[0..copy_length]);
+            break :blk copy_length;
         },
         .rle => RunLength.encode(input, output),
         .bitpack => Bitpack.encode(input, output),
         .both => blk: {
-            var mid: [maximum_packet_payload_size]u8 = undefined;
-            const n = RunLength.encode(input, &mid);
-            break :blk Bitpack.encode(mid[0..n], output);
+            var middle_buffer: [maximum_payload_size]u8 = undefined;
+            const middle_length = RunLength.encode(input, &middle_buffer);
+            break :blk Bitpack.encode(middle_buffer[0..middle_length], output);
         },
     };
 }
@@ -188,87 +196,87 @@ fn compressWithMethod(method: CompressionMethod, input: []const u8, output: []u8
 fn decompressWithMethod(method: CompressionMethod, input: []const u8, output: []u8) usize {
     return switch (method) {
         .none => blk: {
-            const n = @min(input.len, output.len);
-            @memcpy(output[0..n], input[0..n]);
-            break :blk n;
+            const copy_length = @min(input.len, output.len);
+            @memcpy(output[0..copy_length], input[0..copy_length]);
+            break :blk copy_length;
         },
         .rle => RunLength.decode(input, output),
         .bitpack => Bitpack.decode(input, output),
         .both => blk: {
-            var mid: [maximum_packet_payload_size]u8 = undefined;
-            const n = Bitpack.decode(input, &mid);
-            break :blk RunLength.decode(mid[0..n], output);
+            var middle_buffer: [maximum_payload_size]u8 = undefined;
+            const middle_length = Bitpack.decode(input, &middle_buffer);
+            break :blk RunLength.decode(middle_buffer[0..middle_length], output);
         },
     };
 }
 
-fn serializeValue(comptime T: type, value: T, writer: *std.Io.Writer) !void {
-    switch (@typeInfo(T)) {
+fn serializeValue(comptime ValueType: type, value: ValueType, writer: *std.Io.Writer) !void {
+    switch (@typeInfo(ValueType)) {
         .void => {},
         .bool => try writer.writeByte(if (value) 1 else 0),
-        .int => try writer.writeInt(T, value, .little),
+        .int => try writer.writeInt(ValueType, value, .little),
         .float => try writer.writeAll(std.mem.asBytes(&value)),
-        .@"struct" => |info| {
-            if (@hasDecl(T, "netlingSerialize")) {
+        .@"struct" => |struct_info| {
+            if (@hasDecl(ValueType, "netlingSerialize")) {
                 try value.netlingSerialize(writer);
             } else {
-                inline for (info.fields) |field| {
+                inline for (struct_info.fields) |field| {
                     try serializeValue(field.type, @field(value, field.name), writer);
                 }
             }
         },
-        .@"enum" => |info| try writer.writeInt(info.tag_type, @intFromEnum(value), .little),
-        .array => |info| for (value) |el| try serializeValue(info.child, el, writer),
-        .pointer => |info| {
-            if (info.size == .Slice and info.child == u8) {
+        .@"enum" => |enum_info| try writer.writeInt(enum_info.tag_type, @intFromEnum(value), .little),
+        .array => |array_info| for (value) |element| try serializeValue(array_info.child, element, writer),
+        .pointer => |pointer_info| {
+            if (pointer_info.size == .Slice and pointer_info.child == u8) {
                 try writer.writeInt(u32, @intCast(value.len), .little);
                 try writer.writeAll(value);
-            } else @compileError("[netling] unsupported pointer type: " ++ @typeName(T));
+            } else @compileError("[netling] unsupported pointer type: " ++ @typeName(ValueType));
         },
-        .optional => |info| {
-            if (value) |inner| {
+        .optional => |optional_info| {
+            if (value) |inner_value| {
                 try writer.writeByte(1);
-                try serializeValue(info.child, inner, writer);
+                try serializeValue(optional_info.child, inner_value, writer);
             } else try writer.writeByte(0);
         },
-        else => @compileError("[netling] unsupported type: " ++ @typeName(T)),
+        else => @compileError("[netling] unsupported type: " ++ @typeName(ValueType)),
     }
 }
 
-fn deserializeValue(comptime T: type, reader: *std.Io.Reader, allocator: std.mem.Allocator) !T {
-    switch (@typeInfo(T)) {
+fn deserializeValue(comptime ValueType: type, reader: *std.Io.Reader, allocator: std.mem.Allocator) !ValueType {
+    switch (@typeInfo(ValueType)) {
         .void => return {},
         .bool => return (try reader.takeByte()) != 0,
-        .int => return reader.takeInt(T, .little),
-        .float => return std.mem.bytesToValue(T, try reader.takeArray(@sizeOf(T))),
-        .@"struct" => |info| {
-            if (@hasDecl(T, "netlingDeserialize")) return T.netlingDeserialize(reader, allocator);
+        .int => return reader.takeInt(ValueType, .little),
+        .float => return std.mem.bytesToValue(ValueType, try reader.takeArray(@sizeOf(ValueType))),
+        .@"struct" => |struct_info| {
+            if (@hasDecl(ValueType, "netlingDeserialize")) return ValueType.netlingDeserialize(reader, allocator);
 
-            var result: T = undefined;
-            inline for (info.fields) |field| {
+            var result: ValueType = undefined;
+            inline for (struct_info.fields) |field| {
                 @field(result, field.name) = try deserializeValue(field.type, reader, allocator);
             }
             return result;
         },
-        .@"enum" => |info| return @enumFromInt(try reader.takeInt(info.tag_type, .little)),
-        .array => |info| {
-            var result: T = undefined;
-            for (&result) |*el| el.* = try deserializeValue(info.child, reader, allocator);
+        .@"enum" => |enum_info| return @enumFromInt(try reader.takeInt(enum_info.tag_type, .little)),
+        .array => |array_info| {
+            var result: ValueType = undefined;
+            for (&result) |*element| element.* = try deserializeValue(array_info.child, reader, allocator);
             return result;
         },
-        .pointer => |info| {
-            if (info.size == .Slice and info.child == u8) {
-                const len = try reader.takeInt(u32, .little);
-                const buf = try allocator.alloc(u8, len);
-                try reader.readSliceAll(buf);
-                return buf;
-            } else @compileError("[netling] unsupported pointer type: " ++ @typeName(T));
+        .pointer => |pointer_info| {
+            if (pointer_info.size == .Slice and pointer_info.child == u8) {
+                const slice_length = try reader.takeInt(u32, .little);
+                const buffer = try allocator.alloc(u8, slice_length);
+                try reader.readSliceAll(buffer);
+                return buffer;
+            } else @compileError("[netling] unsupported pointer type: " ++ @typeName(ValueType));
         },
-        .optional => |info| {
-            if ((try reader.takeByte()) != 0) return try deserializeValue(info.child, reader, allocator);
+        .optional => |optional_info| {
+            if ((try reader.takeByte()) != 0) return try deserializeValue(optional_info.child, reader, allocator);
             return null;
         },
-        else => @compileError("[netling] unsupported type: " ++ @typeName(T)),
+        else => @compileError("[netling] unsupported type: " ++ @typeName(ValueType)),
     }
 }
 
@@ -277,7 +285,7 @@ const RawPacket = struct {
     payload: []u8,
 
     fn deinit(self: *RawPacket) void {
-        g.allocator.free(self.payload);
+        global_state.allocator.free(self.payload);
     }
 };
 
@@ -291,17 +299,17 @@ const PeerConnection = struct {
     reader: ?std.Io.net.Stream.Reader = null,
     writer: ?std.Io.net.Stream.Writer = null,
 
-    read_task: ?std.Io.Future(ReadResult) = null,
+    read_task: ?std.Io.Future(ReadOutcome) = null,
     read_done: std.atomic.Value(bool) = .init(false),
 
     write_queue: std.ArrayList(QueuedWrite) = .empty,
-    write_task: ?std.Io.Future(WriteResult) = null,
+    write_task: ?std.Io.Future(WriteOutcome) = null,
     write_done: std.atomic.Value(bool) = .init(false),
 
     closed: bool = false,
 
-    const ReadResult = struct { packet: ?RawPacket = null, err: ?anyerror = null };
-    const WriteResult = struct { err: ?anyerror = null };
+    const ReadOutcome = struct { packet: ?RawPacket = null, err: ?anyerror = null };
+    const WriteOutcome = struct { err: ?anyerror = null };
 
     const QueuedWrite = struct {
         event_identifier: u16,
@@ -312,63 +320,64 @@ const PeerConnection = struct {
     fn startReceiveIfIdle(self: *PeerConnection) void {
         if (self.read_task != null or self.closed) return;
 
-        const Ctx = struct {
-            conn: *PeerConnection,
+        const ReceiveContext = struct {
+            connection: *PeerConnection,
 
-            fn run(ctx: @This()) ReadResult {
-                defer ctx.conn.read_done.store(true, .release);
+            fn run(context: @This()) ReadOutcome {
+                defer context.connection.read_done.store(true, .release);
 
-                const packet = ctx.conn.receiveBlocking() catch |err| return .{ .err = err };
+                const packet = context.connection.receiveBlocking() catch |err| return .{ .err = err };
                 return .{ .packet = packet };
             }
         };
 
         self.read_done.store(false, .release);
-        self.read_task = g.io.async(Ctx.run, .{.{ .conn = self }});
+        self.read_task = global_state.io.async(ReceiveContext.run, .{.{ .connection = self }});
     }
 
-    fn pollReadTask(self: *PeerConnection) ?ReadResult {
-        if (self.read_task == null) return null;
-        if (!self.read_done.load(.acquire)) return null;
+    fn drainReadTasks(self: *PeerConnection, out_results: *std.ArrayList(ReadOutcome)) !void {
+        while (self.read_task != null and self.read_done.load(.acquire)) {
+            var task = self.read_task.?;
+            self.read_task = null;
 
-        var task = self.read_task.?;
-        self.read_task = null;
+            try out_results.append(global_state.allocator, task.await(global_state.io));
 
-        return task.await(g.io);
+            self.startReceiveIfIdle();
+        }
     }
 
     fn receiveBlocking(self: *PeerConnection) !RawPacket {
         if (self.reader == null) {
-            self.reader = self.stream.reader(g.io, &self.read_buffer);
+            self.reader = self.stream.reader(global_state.io, &self.read_buffer);
         }
-        var reader = &self.reader.?;
+        var stream_reader = &self.reader.?;
 
-        const header = reader.interface.takeStruct(WireHeader, .little) catch return NetError.ConnectionClosed;
+        const header = stream_reader.interface.takeStruct(WireHeader, .little) catch return NetError.ConnectionClosed;
 
-        if (header.payload_length > maximum_packet_payload_size)
+        if (header.payload_length > maximum_payload_size)
             return NetError.ConnectionClosed;
 
-        var compressed_buf: [maximum_packet_payload_size]u8 = undefined;
-        const compressed = compressed_buf[0..header.payload_length];
-        reader.interface.readSliceAll(compressed) catch return NetError.ConnectionClosed;
+        var compressed_buffer: [maximum_payload_size]u8 = undefined;
+        const compressed_slice = compressed_buffer[0..header.payload_length];
+        stream_reader.interface.readSliceAll(compressed_slice) catch return NetError.ConnectionClosed;
 
-        var decompressed_buf: [maximum_packet_payload_size]u8 = undefined;
-        const n = decompressWithMethod(flagsToMethod(header.flags), compressed, &decompressed_buf);
+        var decompressed_buffer: [maximum_payload_size]u8 = undefined;
+        const decompressed_length = decompressWithMethod(flagsToCompression(header.flags), compressed_slice, &decompressed_buffer);
 
         return .{
             .event_identifier = header.event_identifier,
-            .payload = try g.allocator.dupe(u8, decompressed_buf[0..n]),
+            .payload = try global_state.allocator.dupe(u8, decompressed_buffer[0..decompressed_length]),
         };
     }
 
-    fn queueSend(self: *PeerConnection, event_identifier: u16, comptime T: type, value: T, method: CompressionMethod) !void {
-        var serialized_buf: [maximum_packet_payload_size]u8 = undefined;
-        var writer: std.Io.Writer = .fixed(&serialized_buf);
-        try serializeValue(T, value, &writer);
+    fn queueSend(self: *PeerConnection, event_identifier: u16, comptime ValueType: type, value: ValueType, method: CompressionMethod) !void {
+        var serialized_buffer: [maximum_payload_size]u8 = undefined;
+        var buffer_writer: std.Io.Writer = .fixed(&serialized_buffer);
+        try serializeValue(ValueType, value, &buffer_writer);
 
-        try self.write_queue.append(g.allocator, .{
+        try self.write_queue.append(global_state.allocator, .{
             .event_identifier = event_identifier,
-            .payload = try g.allocator.dupe(u8, writer.buffered()),
+            .payload = try global_state.allocator.dupe(u8, buffer_writer.buffered()),
             .method = method,
         });
     }
@@ -382,23 +391,23 @@ const PeerConnection = struct {
             var task = self.write_task.?;
             self.write_task = null;
 
-            const result = task.await(g.io);
-            if (result.err) |err| std.log.err("[netling] write failed: {}", .{err});
+            const outcome = task.await(global_state.io);
+            if (outcome.err) |err| std.log.err("[netling] write failed: {}", .{err});
         }
 
         if (self.write_queue.items.len == 0) return;
 
-        const queued = self.write_queue.orderedRemove(0);
+        const queued_write = self.write_queue.orderedRemove(0);
 
-        const Ctx = struct {
-            conn: *PeerConnection,
-            item: QueuedWrite,
+        const SendContext = struct {
+            connection: *PeerConnection,
+            queued_write: QueuedWrite,
 
-            fn run(ctx: @This()) WriteResult {
-                defer g.allocator.free(ctx.item.payload);
-                defer ctx.conn.write_done.store(true, .release);
+            fn run(context: @This()) WriteOutcome {
+                defer global_state.allocator.free(context.queued_write.payload);
+                defer context.connection.write_done.store(true, .release);
 
-                ctx.conn.sendBlocking(ctx.item.event_identifier, ctx.item.payload, ctx.item.method) catch |err| {
+                context.connection.sendBlocking(context.queued_write.event_identifier, context.queued_write.payload, context.queued_write.method) catch |err| {
                     return .{ .err = err };
                 };
 
@@ -407,64 +416,55 @@ const PeerConnection = struct {
         };
 
         self.write_done.store(false, .release);
-        self.write_task = g.io.async(Ctx.run, .{.{ .conn = self, .item = queued }});
+        self.write_task = global_state.io.async(SendContext.run, .{.{ .connection = self, .queued_write = queued_write }});
     }
 
     fn sendBlocking(self: *PeerConnection, event_identifier: u16, serialized: []const u8, method: CompressionMethod) !void {
-        var compressed_buf: [maximum_packet_payload_size]u8 = undefined;
-        const compressed_len = compressWithMethod(method, serialized, &compressed_buf);
+        var compressed_buffer: [maximum_payload_size]u8 = undefined;
+        const compressed_length = compressWithMethod(method, serialized, &compressed_buffer);
 
         const header = WireHeader{
             .event_identifier = event_identifier,
-            .payload_length = @intCast(compressed_len),
-            .flags = methodToFlags(method),
+            .payload_length = @intCast(compressed_length),
+            .flags = compressionToFlags(method),
         };
 
         if (self.writer == null) {
-            self.writer = self.stream.writer(g.io, &self.write_buffer);
+            self.writer = self.stream.writer(global_state.io, &self.write_buffer);
         }
-        var writer = &self.writer.?;
+        var stream_writer = &self.writer.?;
 
-        writer.interface.writeStruct(header, .little) catch |err| {
-            if (err == error.Unexpected) return NetError.ConnectionClosed;
-            return NetError.ConnectionClosed;
-        };
-        writer.interface.writeAll(compressed_buf[0..compressed_len]) catch |err| {
-            if (err == error.Unexpected) return NetError.ConnectionClosed;
-            return NetError.ConnectionClosed;
-        };
-        writer.interface.flush() catch |err| {
-            if (err == error.Unexpected) return NetError.ConnectionClosed;
-            return NetError.ConnectionClosed;
-        };
+        stream_writer.interface.writeStruct(header, .little) catch return NetError.ConnectionClosed;
+        stream_writer.interface.writeAll(compressed_buffer[0..compressed_length]) catch return NetError.ConnectionClosed;
+        stream_writer.interface.flush() catch return NetError.ConnectionClosed;
     }
 
     fn close(self: *PeerConnection) void {
         if (self.closed) return;
         self.closed = true;
 
-        if (self.read_task) |*t| _ = t.cancel(g.io);
-        if (self.write_task) |*t| _ = t.cancel(g.io);
+        if (self.read_task) |*task| _ = task.cancel(global_state.io);
+        if (self.write_task) |*task| _ = task.cancel(global_state.io);
 
         self.reader = null;
         self.writer = null;
 
-        for (self.write_queue.items) |item| g.allocator.free(item.payload);
-        self.write_queue.deinit(g.allocator);
+        for (self.write_queue.items) |item| global_state.allocator.free(item.payload);
+        self.write_queue.deinit(global_state.allocator);
 
-        self.stream.close(g.io);
+        self.stream.close(global_state.io);
     }
 };
 
-const Role = enum { client, server };
+const NetworkRole = enum { client, server };
 
 const GlobalState = struct {
     io: std.Io,
     allocator: std.mem.Allocator,
-    role: Role,
+    role: NetworkRole,
 
     listener: ?std.Io.net.Server = null,
-    accept_task: ?std.Io.Future(AcceptResult) = null,
+    accept_task: ?std.Io.Future(AcceptOutcome) = null,
     accept_done: std.atomic.Value(bool) = .init(false),
 
     connections: std.AutoHashMap(UserId, PeerConnection) = undefined,
@@ -472,20 +472,19 @@ const GlobalState = struct {
 
     incoming: std.AutoHashMap(UserId, std.ArrayList(RawPacket)) = undefined,
 
-    scratch: std.ArrayList(u8) = .empty,
-    disconnected: std.ArrayList(UserId) = .empty,
-    connected: std.ArrayList(UserId) = .empty,
+    disconnected_users: std.ArrayList(UserId) = .empty,
+    connected_users: std.ArrayList(UserId) = .empty,
 
-    const AcceptResult = struct { stream: ?std.Io.net.Stream = null, err: ?anyerror = null };
+    const AcceptOutcome = struct { stream: ?std.Io.net.Stream = null, err: ?anyerror = null };
 };
 
-var g: GlobalState = undefined;
-var g_initialized = false;
+var global_state: GlobalState = undefined;
+var is_initialized = false;
 
-fn ensureInit(io: std.Io, allocator: std.mem.Allocator, role: Role) !void {
-    if (g_initialized) return NetError.AlreadyInitialized;
+fn ensureInitialized(io: std.Io, allocator: std.mem.Allocator, role: NetworkRole) !void {
+    if (is_initialized) return NetError.AlreadyInitialized;
 
-    g = .{
+    global_state = .{
         .io = io,
         .allocator = allocator,
         .role = role,
@@ -493,17 +492,17 @@ fn ensureInit(io: std.Io, allocator: std.mem.Allocator, role: Role) !void {
         .incoming = .init(allocator),
     };
 
-    g_initialized = true;
+    is_initialized = true;
 }
 
 pub fn startServer(io: std.Io, allocator: std.mem.Allocator, bind_address: std.Io.net.IpAddress) !void {
-    try ensureInit(io, allocator, .server);
+    try ensureInitialized(io, allocator, .server);
 
-    g.listener = try bind_address.listen(io, .{ .reuse_address = true });
+    global_state.listener = try bind_address.listen(io, .{ .reuse_address = true });
 }
 
 pub fn startClient(io: std.Io, allocator: std.mem.Allocator, server_address: std.Io.net.IpAddress) !UserId {
-    try ensureInit(io, allocator, .client);
+    try ensureInitialized(io, allocator, .client);
 
     const stream = try server_address.connect(io, .{ .mode = .stream });
 
@@ -511,218 +510,219 @@ pub fn startClient(io: std.Io, allocator: std.mem.Allocator, server_address: std
 }
 
 pub fn shutdown() void {
-    if (!g_initialized) return;
+    if (!is_initialized) return;
 
-    var it = g.connections.valueIterator();
-    while (it.next()) |conn| conn.close();
-    g.connections.deinit();
+    var connection_iterator = global_state.connections.valueIterator();
+    while (connection_iterator.next()) |connection| connection.close();
+    global_state.connections.deinit();
 
-    var inc_it = g.incoming.valueIterator();
-    while (inc_it.next()) |list| {
-        for (list.items) |*p| p.deinit();
-        list.deinit(g.allocator);
+    var incoming_iterator = global_state.incoming.valueIterator();
+    while (incoming_iterator.next()) |packet_list| {
+        for (packet_list.items) |*packet| packet.deinit();
+        packet_list.deinit(global_state.allocator);
     }
-    g.incoming.deinit();
+    global_state.incoming.deinit();
 
-    if (g.accept_task) |*t| _ = t.cancel(g.io);
-    if (g.listener) |*l| l.deinit(g.io);
+    if (global_state.accept_task) |*task| _ = task.cancel(global_state.io);
+    if (global_state.listener) |*listener| listener.deinit(global_state.io);
 
-    g.scratch.deinit(g.allocator);
-    g.disconnected.deinit(g.allocator);
-    g.connected.deinit(g.allocator);
+    global_state.disconnected_users.deinit(global_state.allocator);
+    global_state.connected_users.deinit(global_state.allocator);
 
-    g_initialized = false;
+    is_initialized = false;
 }
 
 fn addConnection(stream: std.Io.net.Stream) !UserId {
-    const id = g.next_user_identifier;
-    g.next_user_identifier += 1;
+    const assigned_identifier = global_state.next_user_identifier;
+    global_state.next_user_identifier += 1;
 
-    try g.connections.put(id, .{ .stream = stream, .user_identifier = id });
-    try g.incoming.put(id, .empty);
+    try global_state.connections.put(assigned_identifier, .{ .stream = stream, .user_identifier = assigned_identifier });
+    try global_state.incoming.put(assigned_identifier, .empty);
 
-    return id;
+    return assigned_identifier;
 }
 
-fn removeConnection(id: UserId) void {
-    if (g.connections.fetchRemove(id)) |entry| {
-        var conn = entry.value;
-        conn.close();
+fn removeConnection(user_identifier: UserId) void {
+    if (global_state.connections.fetchRemove(user_identifier)) |entry| {
+        var connection = entry.value;
+        connection.close();
     }
 
-    if (g.incoming.fetchRemove(id)) |entry| {
-        var list = entry.value;
-        for (list.items) |*p| p.deinit();
-        list.deinit(g.allocator);
+    if (global_state.incoming.fetchRemove(user_identifier)) |entry| {
+        var packet_list = entry.value;
+        for (packet_list.items) |*packet| packet.deinit();
+        packet_list.deinit(global_state.allocator);
     }
 }
 
 pub fn poll() !void {
-    if (!g_initialized) return NetError.NotInitialized;
+    if (!is_initialized) return NetError.NotInitialized;
 
-    if (g.role == .server) try pollAccept();
+    if (global_state.role == .server) try pollAccept();
 
-    var it = g.connections.iterator();
-    var dead: std.ArrayList(UserId) = .empty;
-    defer dead.deinit(g.allocator);
+    var connection_iterator = global_state.connections.iterator();
+    var dead_users: std.ArrayList(UserId) = .empty;
+    defer dead_users.deinit(global_state.allocator);
 
-    while (it.next()) |entry| {
-        const id = entry.key_ptr.*;
-        const conn = entry.value_ptr;
+    var read_results: std.ArrayList(PeerConnection.ReadOutcome) = .empty;
+    defer read_results.deinit(global_state.allocator);
 
-        conn.startReceiveIfIdle();
-        conn.pumpWrites();
+    while (connection_iterator.next()) |entry| {
+        const user_identifier = entry.key_ptr.*;
+        const connection = entry.value_ptr;
 
-        if (conn.pollReadTask()) |result| {
+        connection.startReceiveIfIdle();
+        connection.pumpWrites();
+
+        read_results.clearRetainingCapacity();
+        try connection.drainReadTasks(&read_results);
+
+        for (read_results.items) |result| {
             if (result.err) |_| {
-                try dead.append(g.allocator, id);
+                try dead_users.append(global_state.allocator, user_identifier);
             } else if (result.packet) |packet| {
-                const list_ptr = g.incoming.getPtr(id).?;
-                try list_ptr.append(g.allocator, packet);
+                const packet_list = global_state.incoming.getPtr(user_identifier).?;
+                try packet_list.append(global_state.allocator, packet);
             }
         }
     }
 
-    for (dead.items) |id| {
-        removeConnection(id);
-        try g.disconnected.append(g.allocator, id);
+    for (dead_users.items) |user_identifier| {
+        removeConnection(user_identifier);
+        try global_state.disconnected_users.append(global_state.allocator, user_identifier);
     }
 }
 
 fn pollAccept() !void {
-    if (g.accept_task == null) {
-        const Ctx = struct {
+    if (global_state.accept_task == null) {
+        const AcceptContext = struct {
             server: *std.Io.net.Server,
 
-            fn run(ctx: @This()) GlobalState.AcceptResult {
-                defer g.accept_done.store(true, .release);
+            fn run(context: @This()) GlobalState.AcceptOutcome {
+                defer global_state.accept_done.store(true, .release);
 
-                const stream = ctx.server.accept(g.io) catch |err| return .{ .err = err };
+                const stream = context.server.accept(global_state.io) catch |err| return .{ .err = err };
                 return .{ .stream = stream };
             }
         };
 
-        g.accept_done.store(false, .release);
-        g.accept_task = g.io.async(Ctx.run, .{.{ .server = &g.listener.? }});
+        global_state.accept_done.store(false, .release);
+        global_state.accept_task = global_state.io.async(AcceptContext.run, .{.{ .server = &global_state.listener.? }});
         return;
     }
 
-    if (!g.accept_done.load(.acquire)) return;
-    var task = g.accept_task.?;
-    g.accept_task = null;
+    if (!global_state.accept_done.load(.acquire)) return;
+    var task = global_state.accept_task.?;
+    global_state.accept_task = null;
 
-    const result = task.await(g.io);
+    const outcome = task.await(global_state.io);
 
-    if (result.err) |err| {
+    if (outcome.err) |err| {
         std.log.err("[netling] accept failed: {}", .{err});
-    } else if (result.stream) |stream| {
-        const id = try addConnection(stream);
-        try g.connected.append(g.allocator, id);
+    } else if (outcome.stream) |stream| {
+        const user_identifier = try addConnection(stream);
+        try global_state.connected_users.append(global_state.allocator, user_identifier);
     }
 }
 
-pub fn takeConnected(allocator: std.mem.Allocator) ![]UserId {
-    if (!g_initialized) return NetError.NotInitialized;
+pub fn takeConnectedUsers(allocator: std.mem.Allocator) ![]UserId {
+    if (!is_initialized) return NetError.NotInitialized;
 
-    const result = try allocator.dupe(UserId, g.connected.items);
-    g.connected.clearRetainingCapacity();
+    const result = try allocator.dupe(UserId, global_state.connected_users.items);
+    global_state.connected_users.clearRetainingCapacity();
 
     return result;
 }
 
-pub fn takeDisconnected(allocator: std.mem.Allocator) ![]UserId {
-    if (!g_initialized) return NetError.NotInitialized;
+pub fn takeDisconnectedUsers(allocator: std.mem.Allocator) ![]UserId {
+    if (!is_initialized) return NetError.NotInitialized;
 
-    const result = try allocator.dupe(UserId, g.disconnected.items);
-    g.disconnected.clearRetainingCapacity();
+    const result = try allocator.dupe(UserId, global_state.disconnected_users.items);
+    global_state.disconnected_users.clearRetainingCapacity();
 
     return result;
 }
 
 pub fn connectedUsers(allocator: std.mem.Allocator) ![]UserId {
-    if (!g_initialized) return NetError.NotInitialized;
+    if (!is_initialized) return NetError.NotInitialized;
 
     var result: std.ArrayList(UserId) = .empty;
-    var it = g.connections.keyIterator();
-    while (it.next()) |id| try result.append(allocator, id.*);
+    var key_iterator = global_state.connections.keyIterator();
+    while (key_iterator.next()) |user_identifier| try result.append(allocator, user_identifier.*);
 
     return try result.toOwnedSlice(allocator);
 }
 
 pub fn isConnected(user_identifier: UserId) bool {
-    if (!g_initialized) return false;
+    if (!is_initialized) return false;
 
-    return g.connections.contains(user_identifier);
+    return global_state.connections.contains(user_identifier);
 }
 
-pub fn registerEvent(
-    comptime T: type,
-    id: u16,
-    method: CompressionMethod,
-) Event(T) {
-    return .{ .event_identifier = id, .compression_method = method };
+pub fn registerEvent(comptime ValueType: type, method: CompressionMethod) NetworkEvent(ValueType) {
+    return .{ .event_identifier = assignEventIdentifier(), .compression_method = method };
 }
 
-pub fn Event(comptime T: type) type {
+pub fn NetworkEvent(comptime ValueType: type) type {
     return struct {
         event_identifier: u16,
         compression_method: CompressionMethod,
 
         const Self = @This();
 
-        pub fn sendTo(self: Self, target: UserId, value: T) !void {
-            if (!g_initialized) return NetError.NotInitialized;
+        pub fn sendTo(self: Self, target_user: UserId, value: ValueType) !void {
+            if (!is_initialized) return NetError.NotInitialized;
 
-            const conn = g.connections.getPtr(target) orelse return NetError.UnknownUser;
+            const connection = global_state.connections.getPtr(target_user) orelse return NetError.UnknownUser;
 
-            try conn.queueSend(self.event_identifier, T, value, self.compression_method);
+            try connection.queueSend(self.event_identifier, ValueType, value, self.compression_method);
         }
 
-        pub fn broadcastAll(self: Self, value: T) !void {
-            if (!g_initialized) return NetError.NotInitialized;
+        pub fn broadcastAll(self: Self, value: ValueType) !void {
+            if (!is_initialized) return NetError.NotInitialized;
 
-            var it = g.connections.valueIterator();
-            while (it.next()) |conn| {
-                try conn.queueSend(self.event_identifier, T, value, self.compression_method);
+            var connection_iterator = global_state.connections.valueIterator();
+            while (connection_iterator.next()) |connection| {
+                try connection.queueSend(self.event_identifier, ValueType, value, self.compression_method);
             }
         }
 
-        pub fn broadcastExcept(self: Self, excluded: UserId, value: T) !void {
-            if (!g_initialized) return NetError.NotInitialized;
+        pub fn broadcastExcept(self: Self, excluded_user: UserId, value: ValueType) !void {
+            if (!is_initialized) return NetError.NotInitialized;
 
-            var it = g.connections.valueIterator();
-            while (it.next()) |conn| {
-                if (conn.user_identifier == excluded) continue;
-                try conn.queueSend(self.event_identifier, T, value, self.compression_method);
+            var connection_iterator = global_state.connections.valueIterator();
+            while (connection_iterator.next()) |connection| {
+                if (connection.user_identifier == excluded_user) continue;
+                try connection.queueSend(self.event_identifier, ValueType, value, self.compression_method);
             }
         }
 
-        pub fn pollEvent(self: Self, from_user: UserId) ![]T {
-            if (!g_initialized) return NetError.NotInitialized;
+        pub fn pollEvent(self: Self, from_user: UserId) ![]ValueType {
+            if (!is_initialized) return NetError.NotInitialized;
 
-            const list_ptr = g.incoming.getPtr(from_user) orelse return &.{};
+            const packet_list = global_state.incoming.getPtr(from_user) orelse return &.{};
 
-            var result: std.ArrayList(T) = .empty;
+            var result: std.ArrayList(ValueType) = .empty;
             var write_index: usize = 0;
 
-            for (list_ptr.items) |*packet| {
+            for (packet_list.items) |*packet| {
                 if (packet.event_identifier != self.event_identifier) {
-                    list_ptr.items[write_index] = packet.*;
+                    packet_list.items[write_index] = packet.*;
                     write_index += 1;
                     continue;
                 }
 
-                var reader: std.Io.Reader = .fixed(packet.payload);
-                const value = try deserializeValue(T, &reader, g.allocator);
+                var payload_reader: std.Io.Reader = .fixed(packet.payload);
+                const value = try deserializeValue(ValueType, &payload_reader, global_state.allocator);
 
-                try result.append(g.allocator, value);
+                try result.append(global_state.allocator, value);
 
                 packet.deinit();
             }
 
-            list_ptr.shrinkRetainingCapacity(write_index);
+            packet_list.shrinkRetainingCapacity(write_index);
 
-            return try result.toOwnedSlice(g.allocator);
+            return try result.toOwnedSlice(global_state.allocator);
         }
     };
 }
