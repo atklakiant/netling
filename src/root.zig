@@ -651,11 +651,21 @@ pub fn isConnected(user_identifier: UserId) bool {
     return global_state.connections.contains(user_identifier);
 }
 
-pub fn registerEvent(comptime ValueType: type, comptime event_kind: anytype, method: CompressionMethod) NetworkEvent(ValueType) {
-    if (@typeInfo(@TypeOf(event_kind)) != .@"enum") @compileError("[netling] event_kind must be an enum value, e.g. EventKind.move");
+var event_id_counter: EventCounter = .{};
 
-    return .{ .event_identifier = @intFromEnum(event_kind), .compression_method = method };
+pub fn registerEvent(comptime ValueType: type, method: CompressionMethod) NetworkEvent(ValueType) {
+    return .{ .event_identifier = comptime event_id_counter.add(), .compression_method = method };
 }
+
+pub const EventCounter = struct {
+    value: u16 = 0,
+
+    pub fn add(comptime self: *EventCounter) u16 {
+        const assigned = self.value;
+        self.value += 1;
+        return assigned;
+    }
+};
 
 pub fn NetworkEvent(comptime ValueType: type) type {
     return struct {
