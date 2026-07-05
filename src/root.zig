@@ -651,21 +651,14 @@ pub fn isConnected(user_identifier: UserId) bool {
     return global_state.connections.contains(user_identifier);
 }
 
-var event_id_counter: EventCounter = .{};
-
 pub fn registerEvent(comptime ValueType: type, method: CompressionMethod) NetworkEvent(ValueType) {
-    return .{ .event_identifier = comptime event_id_counter.add(), .compression_method = method };
+    const S = struct {
+        var counter: u16 = 0;
+    };
+    const assigned = S.counter;
+    S.counter += 1;
+    return .{ .event_identifier = assigned, .compression_method = method };
 }
-
-pub const EventCounter = struct {
-    value: u16 = 0,
-
-    pub fn add(comptime self: *EventCounter) u16 {
-        const assigned = self.value;
-        self.value += 1;
-        return assigned;
-    }
-};
 
 pub fn NetworkEvent(comptime ValueType: type) type {
     return struct {
