@@ -651,12 +651,12 @@ pub fn isConnected(user_identifier: UserId) bool {
     return global_state.connections.contains(user_identifier);
 }
 
-pub fn EventRegistry(comptime EventKind: type) type {
+pub fn EventRegistry(comptime EventKind: type, id: u16) type {
     if (@typeInfo(EventKind) != .@"enum") @compileError("[netling] EventRegistry requires an enum type");
 
     return struct {
         pub fn create(comptime event_kind: EventKind, comptime ValueType: type, method: CompressionMethod) NetworkEvent(ValueType) {
-            return .{ .event_identifier = @intFromEnum(event_kind), .compression_method = method };
+            return .{ .event_identifier = id + @intFromEnum(event_kind), .compression_method = method };
         }
     };
 }
