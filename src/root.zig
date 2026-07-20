@@ -236,6 +236,11 @@ fn serializeValue(comptime ValueType: type, value: ValueType, writer: *std.Io.Wr
                 try writer.writeAll(value);
             } else @compileError("[netling] unsupported pointer type: " ++ @typeName(ValueType));
         },
+        .vector => |vector_info| {
+            inline for (0..vector_info.len) |element_index| {
+                try serializeValue(vector_info.child, value[element_index], writer);
+            }
+        },
         .optional => |optional_info| {
             if (value) |inner_value| {
                 try writer.writeByte(1);
@@ -265,6 +270,13 @@ fn deserializeValue(comptime ValueType: type, reader: *std.Io.Reader, allocator:
         .array => |array_info| {
             var result: ValueType = undefined;
             for (&result) |*element| element.* = try deserializeValue(array_info.child, reader, allocator);
+            return result;
+        },
+        .vector => |vector_info| {
+            var result: ValueType = undefined;
+            inline for (0..vector_info.len) |element_index| {
+                result[element_index] = try deserializeValue(vector_info.child, reader, allocator);
+            }
             return result;
         },
         .pointer => |pointer_info| {
