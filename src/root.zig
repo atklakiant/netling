@@ -231,7 +231,7 @@ fn serializeValue(comptime ValueType: type, value: ValueType, writer: *std.Io.Wr
         .@"enum" => |enum_info| try writer.writeInt(enum_info.tag_type, @intFromEnum(value), .little),
         .array => |array_info| for (value) |element| try serializeValue(array_info.child, element, writer),
         .pointer => |pointer_info| {
-            if (pointer_info.size == .Slice and pointer_info.child == u8) {
+            if (pointer_info.size == .slice and pointer_info.child == u8) {
                 try writer.writeInt(u32, @intCast(value.len), .little);
                 try writer.writeAll(value);
             } else @compileError("[netling] unsupported pointer type: " ++ @typeName(ValueType));
@@ -280,7 +280,7 @@ fn deserializeValue(comptime ValueType: type, reader: *std.Io.Reader, allocator:
             return result;
         },
         .pointer => |pointer_info| {
-            if (pointer_info.size == .Slice and pointer_info.child == u8) {
+            if (pointer_info.size == .slice and pointer_info.child == u8) {
                 const slice_length = try reader.takeInt(u32, .little);
                 const buffer = try allocator.alloc(u8, slice_length);
                 try reader.readSliceAll(buffer);
