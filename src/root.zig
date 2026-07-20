@@ -111,31 +111,38 @@ const RunLength = struct {
 };
 
 const Bitpack = struct {
-    fn encode(input: []const u8, output: []u8) usize {
-        if (input.len % 4 != 0) {
-            const copy_length = @min(input.len, output.len);
-            @memcpy(output[0..copy_length], input[0..copy_length]);
-            return copy_length;
-        }
+    // Each chunk is framed as:
+    //   [chunk_length: u8] [needed_bytes: u8] [needed_bytes value bytes]
+    // chunk_length is the true number of source bytes this chunk represents
+    // (1-4; only the final chunk of a payload can be less than 4), so encode
+    // and decode stay symmetric for any input length, not just multiples of 4.
 
+    fn encode(input: []const u8, output: []u8) usize {
         var input_index: usize = 0;
         var output_index: usize = 0;
 
-        while (input_index + 4 <= input.len) {
-            const value = std.mem.readInt(u32, input[input_index..][0..4], .little);
+        while (input_index < input.len) {
+            const chunk_length: u8 = @intCast(@min(4, input.len - input_index));
+
+            var value: u32 = 0;
+            for (0..chunk_length) |byte_index| {
+                value |= @as(u32, input[input_index + byte_index]) << @intCast(byte_index * 8);
+            }
+
             const needed_bytes: u8 = if (value <= 0xFF) 1 else if (value <= 0xFFFF) 2 else if (value <= 0xFFFFFF) 3 else 4;
 
-            if (output_index + 1 + needed_bytes > output.len) break;
+            if (output_index + 2 + needed_bytes > output.len) break;
 
-            output[output_index] = needed_bytes;
-            output_index += 1;
+            output[output_index] = chunk_length;
+            output[output_index + 1] = needed_bytes;
+            output_index += 2;
 
             for (0..needed_bytes) |byte_index| {
                 output[output_index] = @intCast((value >> @intCast(byte_index * 8)) & 0xFF);
                 output_index += 1;
             }
 
-            input_index += 4;
+            input_index += chunk_length;
         }
 
         return output_index;
@@ -146,22 +153,26 @@ const Bitpack = struct {
         var output_index: usize = 0;
 
         while (input_index < input.len) {
-            if (input_index + 1 > input.len) break;
+            if (input_index + 2 > input.len) break;
 
-            const needed_bytes = input[input_index];
-            input_index += 1;
+            const chunk_length = input[input_index];
+            const needed_bytes = input[input_index + 1];
+            input_index += 2;
 
+            if (chunk_length == 0 or chunk_length > 4) break;
             if (needed_bytes == 0 or needed_bytes > 4) break;
             if (input_index + needed_bytes > input.len) break;
-            if (output_index + 4 > output.len) break;
+            if (output_index + chunk_length > output.len) break;
 
             var value: u32 = 0;
             for (0..needed_bytes) |byte_index| value |= @as(u32, input[input_index + byte_index]) << @intCast(byte_index * 8);
 
             input_index += needed_bytes;
 
-            std.mem.writeInt(u32, output[output_index..][0..4], value, .little);
-            output_index += 4;
+            for (0..chunk_length) |byte_index| {
+                output[output_index + byte_index] = @intCast((value >> @intCast(byte_index * 8)) & 0xFF);
+            }
+            output_index += chunk_length;
         }
 
         return output_index;
