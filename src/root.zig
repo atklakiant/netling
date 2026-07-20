@@ -111,12 +111,6 @@ const RunLength = struct {
 };
 
 const Bitpack = struct {
-    // Each chunk is framed as:
-    //   [chunk_length: u8] [needed_bytes: u8] [needed_bytes value bytes]
-    // chunk_length is the true number of source bytes this chunk represents
-    // (1-4; only the final chunk of a payload can be less than 4), so encode
-    // and decode stay symmetric for any input length, not just multiples of 4.
-
     fn encode(input: []const u8, output: []u8) usize {
         var input_index: usize = 0;
         var output_index: usize = 0;
