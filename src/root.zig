@@ -34,6 +34,10 @@ pub fn poll() !void {
     state.poll();
 }
 
+pub fn getConnectedCount() usize {
+    return state.getConnectedCount();
+}
+
 pub fn isUserConnected(user_identifier: UserId) bool {
     return state.isConnected(user_identifier);
 }

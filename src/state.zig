@@ -253,6 +253,10 @@ pub fn findConnection(user_identifier: root.UserId) ?*connection.PeerConnection 
     return global_state.connections.getPtr(user_identifier);
 }
 
+pub fn getConnectedCount() usize {
+    return global_state.connected_users.items.len;
+}
+
 pub fn connectionValues() std.AutoHashMap(root.UserId, connection.PeerConnection).ValueIterator {
     return global_state.connections.valueIterator();
 }
