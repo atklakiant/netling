@@ -31,7 +31,7 @@ pub fn shutdown() void {
 }
 
 pub fn poll() !void {
-    state.poll();
+    try state.poll();
 }
 
 pub fn getConnectedCount() usize {
