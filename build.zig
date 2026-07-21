@@ -16,7 +16,7 @@ pub fn build(builder: *std.Build) void {
         .imports = &.{
             .{
                 .name = "zstd",
-                .path = zstd.module("root"),
+                .module = zstd.module("root"),
             },
         },
 
