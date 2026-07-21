@@ -2,11 +2,15 @@
     .name = .netling,
 
     .version = "0.0.0",
+    .dependencies = .{
+        .zstd = .{
+            .url = "git+https://github.com/Scythe-Technology/zig-zstd#dca74d57cf15063cfca0d23e4c893963da47d76e",
+            .hash = "zstd-1.7.0-Z4uSuttBAACrx173YvnnxQ7r8etvlC6x8OMHm7-Mov5l",
+        },
+    },
     .minimum_zig_version = "0.16.0",
 
     .fingerprint = 0xcd03ae6d4006bc8,
-
-    .dependencies = .{},
 
     .paths = .{
         "build.zig",
