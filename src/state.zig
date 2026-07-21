@@ -108,7 +108,7 @@ fn pollAccept() !void {
 
     const outcome = task.await(global_state.io);
 
-    if (outcome.err) |error_value| {
+    if (outcome.error_value) |error_value| {
         std.log.err("[netling] accept failed: {}", .{error_value});
     } else if (outcome.stream) |stream| {
         const user_identifier = try addConnection(stream);
