@@ -6,8 +6,8 @@
 
     .dependencies = .{
         .zstd = .{
-            .url = "git+https://github.com/Scythe-Technology/zig-zstd#dca74d57cf15063cfca0d23e4c893963da47d76e",
-            .hash = "zstd-1.7.0-Z4uSuttBAACrx173YvnnxQ7r8etvlC6x8OMHm7-Mov5l",
+            .url = "git+https://github.com/atklakiant/zstd#7acb67f1742e9c216585f04acbb9c5d7f1b85811",
+            .hash = "zstd-1.7.0-Z4uSun42AAAZzKkp0xnKwdmz3z_FHNulKSatwQR0fO4j",
         },
     },
 
