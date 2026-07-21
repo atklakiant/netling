@@ -13,6 +13,13 @@ pub fn build(builder: *std.Build) void {
         .optimize = optimize,
         .target = target,
 
+        .imports = &.{
+            .{
+                .name = "zstd",
+                .path = zstd.module("root"),
+            },
+        },
+
         .root_source_file = builder.path("src/root.zig"),
     });
 
