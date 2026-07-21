@@ -9,7 +9,7 @@ pub fn build(builder: *std.Build) void {
         .optimize = optimize,
     });
 
-    const netling = builder.addModule("netling", .{
+    _ = builder.addModule("netling", .{
         .optimize = optimize,
         .target = target,
 
