@@ -22,6 +22,4 @@ pub fn build(builder: *std.Build) void {
 
         .root_source_file = builder.path("src/root.zig"),
     });
-
-    netling.linkLibrary(zstd.artifact("zstd"));
 }
