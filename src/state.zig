@@ -16,7 +16,10 @@ const AcceptContext = struct {
     fn run(context: @This()) GlobalState.AcceptOutcome {
         defer global_state.accept_done.store(true, .release);
 
-        const stream = context.server.accept(global_state.io) catch |err| return .{ .err = err };
+        const stream = context.server.accept(global_state.io) catch |error_value| return .{
+            .error_value = error_value,
+        };
+
         return .{ .stream = stream };
     }
 };
