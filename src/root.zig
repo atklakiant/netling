@@ -49,3 +49,11 @@ pub fn isServer() bool {
 pub fn isClient() bool {
     return state.isClientRole();
 }
+
+pub fn getConnectedUsers() ![]UserId {
+    return try state.takeConnectedUsers();
+}
+
+pub fn getDisconnectedUsers() ![]UserId {
+    return try state.takeDisconnectedUsers();
+}

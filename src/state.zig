@@ -199,20 +199,20 @@ pub fn poll() !void {
     }
 }
 
-pub fn takeConnectedUsers(allocator: std.mem.Allocator) ![]root.UserId {
+pub fn takeConnectedUsers() ![]root.UserId {
     if (!is_initialized) return root.NetworkError.NotInitialized;
 
-    const result = try allocator.dupe(root.UserId, global_state.connected_users.items);
+    const result = try global_state.allocator.dupe(root.UserId, global_state.connected_users.items);
 
     global_state.connected_users.clearRetainingCapacity();
 
     return result;
 }
 
-pub fn takeDisconnectedUsers(allocator: std.mem.Allocator) ![]root.UserId {
+pub fn takeDisconnectedUsers() ![]root.UserId {
     if (!is_initialized) return root.NetworkError.NotInitialized;
 
-    const result = try allocator.dupe(root.UserId, global_state.disconnected_users.items);
+    const result = try global_state.allocator.dupe(root.UserId, global_state.disconnected_users.items);
 
     global_state.disconnected_users.clearRetainingCapacity();
 
