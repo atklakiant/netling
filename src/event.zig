@@ -1,8 +1,9 @@
 const state = @import("state.zig");
 const wire = @import("wire.zig");
+const root = @import("root.zig");
 const std = @import("std");
 
-fn sendValueTo(target_user: state.UserId, event_identifier: u16, comptime ValueType: type, value: ValueType) !void {
+fn sendValueTo(target_user: root.UserId, event_identifier: u16, comptime ValueType: type, value: ValueType) !void {
     try state.requireInitialized();
 
     const connection = state.findConnection(target_user) orelse return state.NetworkError.UnknownUser;
@@ -20,7 +21,7 @@ fn broadcastValueAll(event_identifier: u16, comptime ValueType: type, value: Val
     }
 }
 
-fn broadcastValueExcept(excluded_user: state.UserId, event_identifier: u16, comptime ValueType: type, value: ValueType) !void {
+fn broadcastValueExcept(excluded_user: root.UserId, event_identifier: u16, comptime ValueType: type, value: ValueType) !void {
     try state.requireInitialized();
 
     var connection_iterator = state.connectionValues();
@@ -32,7 +33,7 @@ fn broadcastValueExcept(excluded_user: state.UserId, event_identifier: u16, comp
     }
 }
 
-fn pollEventValues(comptime ValueType: type, from_user: state.UserId, event_identifier: u16) ![]ValueType {
+fn pollEventValues(comptime ValueType: type, from_user: root.UserId, event_identifier: u16) ![]ValueType {
     try state.requireInitialized();
 
     const packet_list = state.findIncoming(from_user) orelse return &.{};
@@ -70,7 +71,7 @@ pub fn OutEvent(comptime ValueType: type) type {
             return .{ .event_identifier = event_identifier };
         }
 
-        pub fn sendTo(self: @This(), target_user: state.UserId, value: ValueType) !void {
+        pub fn sendTo(self: @This(), target_user: root.UserId, value: ValueType) !void {
             try sendValueTo(target_user, self.event_identifier, ValueType, value);
         }
 
@@ -78,7 +79,7 @@ pub fn OutEvent(comptime ValueType: type) type {
             try broadcastValueAll(self.event_identifier, ValueType, value);
         }
 
-        pub fn broadcastExcept(self: @This(), excluded_user: state.UserId, value: ValueType) !void {
+        pub fn broadcastExcept(self: @This(), excluded_user: root.UserId, value: ValueType) !void {
             try broadcastValueExcept(excluded_user, self.event_identifier, ValueType, value);
         }
     };
@@ -92,7 +93,7 @@ pub fn Event(comptime ValueType: type) type {
             return .{ .event_identifier = event_identifier };
         }
 
-        pub fn sendTo(self: @This(), target_user: state.UserId, value: ValueType) !void {
+        pub fn sendTo(self: @This(), target_user: root.UserId, value: ValueType) !void {
             try sendValueTo(target_user, self.event_identifier, ValueType, value);
         }
 
@@ -100,11 +101,11 @@ pub fn Event(comptime ValueType: type) type {
             try broadcastValueAll(self.event_identifier, ValueType, value);
         }
 
-        pub fn broadcastExcept(self: @This(), excluded_user: state.UserId, value: ValueType) !void {
+        pub fn broadcastExcept(self: @This(), excluded_user: root.UserId, value: ValueType) !void {
             try broadcastValueExcept(excluded_user, self.event_identifier, ValueType, value);
         }
 
-        pub fn poll(self: @This(), from_user: state.UserId) ![]ValueType {
+        pub fn poll(self: @This(), from_user: root.UserId) ![]ValueType {
             return pollEventValues(ValueType, from_user, self.event_identifier);
         }
     };
