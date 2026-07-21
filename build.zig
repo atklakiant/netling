@@ -2,10 +2,7 @@ const std = @import("std");
 
 pub fn build(builder: *std.Build) void {
     const target = builder.standardTargetOptions(.{});
-
-    const optimize = builder.standardOptimizeOption(.{
-        .preferred_optimize_mode = .ReleaseFast,
-    });
+    const optimize = builder.standardOptimizeOption(.{});
 
     const zstd = builder.dependency("zstd", .{
         .target = target,
