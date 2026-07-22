@@ -63,7 +63,7 @@ fn pollEventValues(comptime ValueType: type, from_user: root.UserId, event_ident
     return try result.toOwnedSlice(allocator);
 }
 
-pub fn OutEvent(comptime ValueType: type) type {
+pub fn Event(comptime In: type, comptime Out: type) type {
     return struct {
         event_identifier: u16,
 
@@ -71,42 +71,20 @@ pub fn OutEvent(comptime ValueType: type) type {
             return .{ .event_identifier = event_identifier };
         }
 
-        pub fn sendTo(self: @This(), target_user: root.UserId, value: ValueType) !void {
-            try sendValueTo(target_user, self.event_identifier, ValueType, value);
+        pub fn sendTo(self: @This(), target_user: root.UserId, value: Out) !void {
+            try sendValueTo(target_user, self.event_identifier, Out, value);
         }
 
-        pub fn broadcastAll(self: @This(), value: ValueType) !void {
-            try broadcastValueAll(self.event_identifier, ValueType, value);
+        pub fn broadcastAll(self: @This(), value: Out) !void {
+            try broadcastValueAll(self.event_identifier, Out, value);
         }
 
-        pub fn broadcastExcept(self: @This(), excluded_user: root.UserId, value: ValueType) !void {
-            try broadcastValueExcept(excluded_user, self.event_identifier, ValueType, value);
-        }
-    };
-}
-
-pub fn Event(comptime ValueType: type) type {
-    return struct {
-        event_identifier: u16,
-
-        pub fn init(event_identifier: u16) @This() {
-            return .{ .event_identifier = event_identifier };
+        pub fn broadcastExcept(self: @This(), excluded_user: root.UserId, value: Out) !void {
+            try broadcastValueExcept(excluded_user, self.event_identifier, Out, value);
         }
 
-        pub fn sendTo(self: @This(), target_user: root.UserId, value: ValueType) !void {
-            try sendValueTo(target_user, self.event_identifier, ValueType, value);
-        }
-
-        pub fn broadcastAll(self: @This(), value: ValueType) !void {
-            try broadcastValueAll(self.event_identifier, ValueType, value);
-        }
-
-        pub fn broadcastExcept(self: @This(), excluded_user: root.UserId, value: ValueType) !void {
-            try broadcastValueExcept(excluded_user, self.event_identifier, ValueType, value);
-        }
-
-        pub fn poll(self: @This(), from_user: root.UserId) ![]ValueType {
-            return pollEventValues(ValueType, from_user, self.event_identifier);
+        pub fn poll(self: @This(), from_user: root.UserId) ![]In {
+            return pollEventValues(In, from_user, self.event_identifier);
         }
     };
 }

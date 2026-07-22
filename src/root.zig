@@ -2,7 +2,6 @@ const state = @import("state.zig");
 const event = @import("event.zig");
 const std = @import("std");
 
-pub const OutEvent = event.OutEvent;
 pub const Event = event.Event;
 pub const UserId = u32;
 

@@ -61,19 +61,34 @@ fn ensureInitialized(io: std.Io, allocator: std.mem.Allocator, role: NetworkRole
     is_initialized = true;
 }
 
-fn addConnection(stream: std.Io.net.Stream) !root.UserId {
-    const assigned_identifier = global_state.next_user_identifier;
-
-    global_state.next_user_identifier += 1;
-
+fn addConnection(stream: std.Io.net.Stream, assigned_identifier: root.UserId) !void {
     try global_state.connections.put(assigned_identifier, .{
         .stream = stream,
         .user_identifier = assigned_identifier,
     });
 
     try global_state.incoming.put(assigned_identifier, .empty);
+}
 
-    return assigned_identifier;
+fn handshakeIdentifier(io: std.Io, stream: std.Io.net.Stream, comptime send: bool, identifier: root.UserId) !root.UserId {
+    var buffer: [4]u8 = undefined;
+
+    if (send) {
+        std.mem.writeInt(u32, &buffer, identifier, .little);
+
+        var writer = stream.writer(io, &buffer);
+
+        writer.interface.writeAll(&buffer) catch return root.NetworkError.ConnectionClosed;
+        writer.interface.flush() catch return root.NetworkError.ConnectionClosed;
+
+        return identifier;
+    }
+
+    var reader = stream.reader(io, &buffer);
+
+    reader.interface.readSliceAll(&buffer) catch return root.NetworkError.ConnectionClosed;
+
+    return std.mem.readInt(u32, &buffer, .little);
 }
 
 fn removeConnection(user_identifier: root.UserId) void {
@@ -111,9 +126,15 @@ fn pollAccept() !void {
     if (outcome.error_value) |error_value| {
         std.log.err("[netling] accept failed: {}", .{error_value});
     } else if (outcome.stream) |stream| {
-        const user_identifier = try addConnection(stream);
+        const assigned_identifier = global_state.next_user_identifier;
 
-        try global_state.connected_users.append(global_state.allocator, user_identifier);
+        global_state.next_user_identifier += 1;
+
+        _ = try handshakeIdentifier(global_state.io, stream, true, assigned_identifier);
+
+        try addConnection(stream, assigned_identifier);
+
+        try global_state.connected_users.append(global_state.allocator, assigned_identifier);
     }
 }
 
@@ -127,8 +148,11 @@ pub fn initClient(io: std.Io, allocator: std.mem.Allocator, server_address: std.
     try ensureInitialized(io, allocator, .client);
 
     const stream = try server_address.connect(io, .{ .mode = .stream });
+    const assigned_identifier = try handshakeIdentifier(io, stream, false, 0);
 
-    return try addConnection(stream);
+    try addConnection(stream, assigned_identifier);
+
+    return assigned_identifier;
 }
 
 pub fn shutdown() void {
