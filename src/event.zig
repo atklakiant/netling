@@ -6,7 +6,7 @@ const std = @import("std");
 fn sendValueTo(target_user: root.UserId, event_identifier: u16, comptime ValueType: type, value: ValueType) !void {
     try state.requireInitialized();
 
-    const connection = state.findConnection(target_user) orelse return state.NetworkError.UnknownUser;
+    const connection = state.findConnection(target_user) orelse return root.NetworkError.UnknownUser;
 
     try connection.queueSend(state.sharedAllocator(), event_identifier, ValueType, value);
 }
