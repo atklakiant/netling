@@ -25,8 +25,12 @@ pub fn serializeValue(comptime ValueType: type, value: ValueType, writer: *std.I
     switch (@typeInfo(ValueType)) {
         .void => {},
         .bool => try writer.writeByte(if (value) 1 else 0),
-        .int => try writer.writeInt(ValueType, value, .little),
         .float => try writer.writeAll(std.mem.asBytes(&value)),
+        .int => |int_info| {
+            const Aligned = std.meta.Int(int_info.signedness, std.mem.alignForward(u16, int_info.bits, 8));
+
+            try writer.writeInt(Aligned, value, .little);
+        },
         .@"struct" => |struct_info| {
             if (@hasDecl(ValueType, "netlingSerialize")) {
                 try value.netlingSerialize(writer);
@@ -68,8 +72,12 @@ pub fn deserializeValue(comptime ValueType: type, reader: *std.Io.Reader, alloca
     switch (@typeInfo(ValueType)) {
         .void => return {},
         .bool => return (try reader.takeByte()) != 0,
-        .int => return reader.takeInt(ValueType, .little),
         .float => return std.mem.bytesToValue(ValueType, try reader.takeArray(@sizeOf(ValueType))),
+        .int => |int_info| {
+            const Aligned = std.meta.Int(int_info.signedness, std.mem.alignForward(u16, int_info.bits, 8));
+
+            return @intCast(try reader.takeInt(Aligned, .little));
+        },
         .@"struct" => |struct_info| {
             if (@hasDecl(ValueType, "netlingDeserialize")) return ValueType.netlingDeserialize(reader, allocator);
 
