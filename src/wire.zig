@@ -43,7 +43,7 @@ pub fn serializeValue(comptime ValueType: type, value: ValueType, writer: *std.I
         .@"enum" => |enum_info| try writer.writeInt(enum_info.tag_type, @intFromEnum(value), .little),
         .array => |array_info| for (value) |element| try serializeValue(array_info.child, element, writer),
         .pointer => |pointer_info| {
-            if (pointer_info.size != .slice) std.debug.panic("[netling] unsupported pointer type: {}", .{@typeName(ValueType)});
+            if (pointer_info.size != .slice) std.debug.panic("[netling] unsupported pointer type: {s}", .{@typeName(ValueType)});
 
             try writer.writeInt(u32, @intCast(value.len), .little);
 
@@ -64,7 +64,7 @@ pub fn serializeValue(comptime ValueType: type, value: ValueType, writer: *std.I
                 try serializeValue(optional_info.child, inner_value, writer);
             } else try writer.writeByte(0);
         },
-        else => std.debug.panic("[netling] unsupported type: {}", .{@typeName(ValueType)}),
+        else => std.debug.panic("[netling] unsupported type: {s}", .{@typeName(ValueType)}),
     }
 }
 
@@ -107,7 +107,7 @@ pub fn deserializeValue(comptime ValueType: type, reader: *std.Io.Reader, alloca
             return result;
         },
         .pointer => |pointer_info| {
-            if (pointer_info.size != .slice) std.debug.panic("[netling] unsupported pointer type: {}", .{@typeName(ValueType)});
+            if (pointer_info.size != .slice) std.debug.panic("[netling] unsupported pointer type: {s}", .{@typeName(ValueType)});
 
             const slice_length = try reader.takeInt(u32, .little);
 
@@ -130,6 +130,6 @@ pub fn deserializeValue(comptime ValueType: type, reader: *std.Io.Reader, alloca
 
             return null;
         },
-        else => std.debug.panic("[netling] unsupported type: {}", .{@typeName(ValueType)}),
+        else => std.debug.panic("[netling] unsupported type: {s}", .{@typeName(ValueType)}),
     }
 }
