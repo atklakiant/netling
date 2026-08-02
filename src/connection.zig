@@ -137,15 +137,29 @@ pub const PeerConnection = struct {
         event_identifier: u16,
         comptime ValueType: type,
         value: ValueType,
+        replace_stale: bool,
     ) !void {
         var serialized_buffer: [wire.maximum_payload_size]u8 = undefined;
         var buffer_writer: std.Io.Writer = .fixed(&serialized_buffer);
 
         try wire.serializeValue(ValueType, value, &buffer_writer);
 
+        const payload = try allocator.dupe(u8, buffer_writer.buffered());
+
+        if (replace_stale) {
+            for (self.write_queue.items) |*queued_write| {
+                if (queued_write.event_identifier == event_identifier) {
+                    allocator.free(queued_write.payload);
+                    queued_write.payload = payload;
+
+                    return;
+                }
+            }
+        }
+
         try self.write_queue.append(allocator, .{
             .event_identifier = event_identifier,
-            .payload = try allocator.dupe(u8, buffer_writer.buffered()),
+            .payload = payload,
         });
     }
 

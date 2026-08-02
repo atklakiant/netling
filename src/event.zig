@@ -3,25 +3,25 @@ const wire = @import("wire.zig");
 const root = @import("root.zig");
 const std = @import("std");
 
-fn sendValueTo(target_user: root.UserId, event_identifier: u16, comptime ValueType: type, value: ValueType) !void {
+fn sendValueTo(target_user: root.UserId, event_identifier: u16, comptime ValueType: type, value: ValueType, replace_stale: bool) !void {
     try state.requireInitialized();
 
     const connection = state.findConnection(target_user) orelse return root.NetworkError.UnknownUser;
 
-    try connection.queueSend(state.sharedAllocator(), event_identifier, ValueType, value);
+    try connection.queueSend(state.sharedAllocator(), event_identifier, ValueType, value, replace_stale);
 }
 
-fn broadcastValueAll(event_identifier: u16, comptime ValueType: type, value: ValueType) !void {
+fn broadcastValueAll(event_identifier: u16, comptime ValueType: type, value: ValueType, replace_stale: bool) !void {
     try state.requireInitialized();
 
     var connection_iterator = state.connectionValues();
 
     while (connection_iterator.next()) |connection| {
-        try connection.queueSend(state.sharedAllocator(), event_identifier, ValueType, value);
+        try connection.queueSend(state.sharedAllocator(), event_identifier, ValueType, value, replace_stale);
     }
 }
 
-fn broadcastValueExcept(excluded_user: root.UserId, event_identifier: u16, comptime ValueType: type, value: ValueType) !void {
+fn broadcastValueExcept(excluded_user: root.UserId, event_identifier: u16, comptime ValueType: type, value: ValueType, replace_stale: bool) !void {
     try state.requireInitialized();
 
     var connection_iterator = state.connectionValues();
@@ -29,7 +29,7 @@ fn broadcastValueExcept(excluded_user: root.UserId, event_identifier: u16, compt
     while (connection_iterator.next()) |connection| {
         if (connection.user_identifier == excluded_user) continue;
 
-        try connection.queueSend(state.sharedAllocator(), event_identifier, ValueType, value);
+        try connection.queueSend(state.sharedAllocator(), event_identifier, ValueType, value, replace_stale);
     }
 }
 
@@ -66,21 +66,22 @@ fn pollEventValues(comptime ValueType: type, from_user: root.UserId, event_ident
 pub fn Event(comptime In: type, comptime Out: type) type {
     return struct {
         event_identifier: u16,
+        replace_stale: bool = false,
 
         pub fn init(event_identifier: u16) @This() {
             return .{ .event_identifier = event_identifier };
         }
 
         pub fn sendTo(self: @This(), target_user: root.UserId, value: Out) !void {
-            try sendValueTo(target_user, self.event_identifier, Out, value);
+            try sendValueTo(target_user, self.event_identifier, Out, value, self.replace_stale);
         }
 
         pub fn broadcastAll(self: @This(), value: Out) !void {
-            try broadcastValueAll(self.event_identifier, Out, value);
+            try broadcastValueAll(self.event_identifier, Out, value, self.replace_stale);
         }
 
         pub fn broadcastExcept(self: @This(), excluded_user: root.UserId, value: Out) !void {
-            try broadcastValueExcept(excluded_user, self.event_identifier, Out, value);
+            try broadcastValueExcept(excluded_user, self.event_identifier, Out, value, self.replace_stale);
         }
 
         pub fn poll(self: @This(), from_user: root.UserId) ![]In {
