@@ -9,14 +9,14 @@ pub const WireHeader = extern struct {
     payload_length: u32,
 };
 
-pub fn compress(input: []const u8, output: []u8) usize {
-    const result = zstd.compress(output, input, zstd_level) catch return 0;
+pub fn decompress(input: []const u8, output: []u8) !usize {
+    const result = try zstd.decompress(output, input);
 
     return result.len;
 }
 
-pub fn decompress(input: []const u8, output: []u8) usize {
-    const result = zstd.decompress(output, input) catch return 0;
+pub fn compress(input: []const u8, output: []u8) !usize {
+    const result = try zstd.compress(output, input, zstd_level);
 
     return result.len;
 }

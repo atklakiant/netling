@@ -123,7 +123,7 @@ pub const PeerConnection = struct {
         stream_reader.interface.readSliceAll(compressed_slice) catch return root.NetworkError.ConnectionClosed;
 
         var decompressed_buffer: [wire.maximum_payload_size]u8 = undefined;
-        const decompressed_length = wire.decompress(compressed_slice, &decompressed_buffer);
+        const decompressed_length = wire.decompress(compressed_slice, &decompressed_buffer) catch return root.NetworkError.ConnectionClosed;
 
         return .{
             .event_identifier = header.event_identifier,
@@ -194,7 +194,7 @@ pub const PeerConnection = struct {
 
     fn sendBlocking(self: *PeerConnection, io: std.Io, event_identifier: u16, serialized: []const u8) !void {
         var compressed_buffer: [wire.maximum_payload_size]u8 = undefined;
-        const compressed_length = wire.compress(serialized, &compressed_buffer);
+        const compressed_length = wire.compress(serialized, &compressed_buffer) catch return root.NetworkError.ConnectionClosed;
 
         const header: wire.WireHeader = .{
             .event_identifier = event_identifier,
