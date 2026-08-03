@@ -42,9 +42,10 @@ fn pollEventValues(comptime ValueType: type, from_user: root.UserId, event_ident
     var result: std.ArrayList(ValueType) = .empty;
     var write_index: usize = 0;
 
-    for (packet_list.items) |*packet| {
+    for (packet_list.items, 0..) |*packet, index| {
         if (packet.event_identifier != event_identifier) {
-            packet_list.items[write_index] = packet.*;
+            if (write_index != index) packet_list.items[write_index] = packet.*;
+
             write_index += 1;
 
             continue;
