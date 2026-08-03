@@ -71,24 +71,27 @@ fn addConnection(stream: std.Io.net.Stream, assigned_identifier: root.UserId) !v
 }
 
 fn handshakeIdentifier(io: std.Io, stream: std.Io.net.Stream, comptime send: bool, identifier: root.UserId) !root.UserId {
-    var buffer: [4]u8 = undefined;
-
     if (send) {
-        std.mem.writeInt(u32, &buffer, identifier, .little);
+        var payload: [4]u8 = undefined;
 
-        var writer = stream.writer(io, &buffer);
+        std.mem.writeInt(u32, &payload, identifier, .little);
 
-        writer.interface.writeAll(&buffer) catch return root.NetworkError.ConnectionClosed;
+        var io_buffer: [4]u8 = undefined;
+        var writer = stream.writer(io, &io_buffer);
+
+        writer.interface.writeAll(&payload) catch return root.NetworkError.ConnectionClosed;
         writer.interface.flush() catch return root.NetworkError.ConnectionClosed;
 
         return identifier;
     }
 
-    var reader = stream.reader(io, &buffer);
+    var payload: [4]u8 = undefined;
+    var io_buffer: [4]u8 = undefined;
+    var reader = stream.reader(io, &io_buffer);
 
-    reader.interface.readSliceAll(&buffer) catch return root.NetworkError.ConnectionClosed;
+    reader.interface.readSliceAll(&payload) catch return root.NetworkError.ConnectionClosed;
 
-    return std.mem.readInt(u32, &buffer, .little);
+    return std.mem.readInt(u32, &payload, .little);
 }
 
 fn removeConnection(user_identifier: root.UserId) void {
