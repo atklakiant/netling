@@ -103,7 +103,14 @@ pub const PeerConnection = struct {
 
             self.read_task = null;
 
-            try out_results.append(allocator, task.await(io));
+            const outcome = task.await(io);
+
+            try out_results.append(allocator, outcome);
+
+            if (outcome.error_value != null) {
+                self.closed = true;
+                return;
+            }
 
             self.startReceiveIfIdle(io, allocator);
         }
