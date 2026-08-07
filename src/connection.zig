@@ -113,14 +113,23 @@ pub const PeerConnection = struct {
         if (self.reader == null) self.reader = self.stream.reader(io, &self.read_buffer);
 
         var stream_reader = &self.reader.?;
-        const header = stream_reader.interface.takeStruct(wire.WireHeader, .little) catch return root.NetworkError.ConnectionClosed;
+
+        const header = stream_reader.interface.takeStruct(wire.WireHeader, .little) catch |read_error| {
+            std.log.warn("[netling] connection reset while reading header: {}", .{read_error});
+
+            return root.NetworkError.ConnectionClosed;
+        };
 
         if (header.payload_length > wire.maximum_payload_size) return root.NetworkError.ConnectionClosed;
 
         var compressed_buffer: [wire.maximum_payload_size]u8 = undefined;
         const compressed_slice = compressed_buffer[0..header.payload_length];
 
-        stream_reader.interface.readSliceAll(compressed_slice) catch return root.NetworkError.ConnectionClosed;
+        stream_reader.interface.readSliceAll(compressed_slice) catch |read_error| {
+            std.log.warn("[netling] connection reset while reading payload: {}", .{read_error});
+
+            return root.NetworkError.ConnectionClosed;
+        };
 
         var decompressed_buffer: [wire.maximum_payload_size]u8 = undefined;
         const decompressed_length = wire.decompress(compressed_slice, &decompressed_buffer) catch return root.NetworkError.ConnectionClosed;
